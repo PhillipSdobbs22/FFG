@@ -1,0 +1,2187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spending Fuel Gauge</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#171e2e; --panel2:#1e2740; --border:#2a3350;
+    --text:#e8ecf5; --muted:#8b96b3; --accent:#4f7cff;
+    --green:#2ecc71; --yellow:#f5c342; --red:#ff5c5c;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    background:var(--bg); color:var(--text); padding:24px 20px 60px;
+  }
+  h1{font-size:22px; margin:0 0 4px;}
+  .sub{color:var(--muted); font-size:13px; margin-bottom:20px;}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:18px; margin-bottom:18px;}
+  .card h2{font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:0 0 12px;}
+  .row{display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end;}
+  label{font-size:12px; color:var(--muted); display:block; margin-bottom:4px;}
+  input[type=file], input[type=date], select{
+    background:var(--panel2); border:1px solid var(--border); color:var(--text);
+    border-radius:8px; padding:8px 10px; font-size:13px;
+  }
+  button{
+    background:var(--accent); color:#fff; border:none; border-radius:8px;
+    padding:9px 16px; font-size:13px; cursor:pointer; font-weight:600;
+  }
+  button.secondary{background:var(--panel2); border:1px solid var(--border); color:var(--text);}
+  button:hover{filter:brightness(1.1);}
+  .pill{display:inline-block; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; background:var(--panel2); color:var(--muted); border:1px solid var(--border);}
+  .tabs{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px;}
+  .tab{padding:8px 14px; border-radius:8px; background:var(--panel2); border:1px solid var(--border); cursor:pointer; font-size:13px; color:var(--muted); font-weight:600;}
+  .tab.active{background:var(--accent); color:#fff; border-color:var(--accent);}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px;}
+  .gauge-card{background:var(--panel2); border:1px solid var(--border); border-radius:12px; padding:14px; text-align:center;}
+  .gauge-card .cat{font-size:13px; font-weight:700; margin-bottom:2px;}
+  .gauge-card .flag{font-size:10px; color:var(--yellow); margin-bottom:6px;}
+  .gauge-card .nums{font-size:12px; color:var(--muted); margin-top:6px;}
+  .gauge-card .nums b{color:var(--text);}
+  .gauge-card .pct{font-size:20px; font-weight:800; margin-top:2px;}
+  .legend{display:flex; gap:14px; font-size:11px; color:var(--muted); justify-content:center; margin-top:10px;}
+  .legend span{display:inline-flex; align-items:center; gap:4px;}
+  .dot{width:8px; height:8px; border-radius:50%; display:inline-block;}
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th,td{text-align:left; padding:8px 10px; border-bottom:1px solid var(--border);}
+  th{color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase;}
+  .checks{display:flex; flex-wrap:wrap; gap:10px; font-size:12px; color:var(--muted);}
+  .checks label{display:flex; align-items:center; gap:5px; margin:0; font-size:12px; color:var(--text);}
+  .meta{font-size:12px; color:var(--muted);}
+  .empty{color:var(--muted); font-size:13px; padding:20px; text-align:center;}
+  .income-box{display:flex; gap:26px; flex-wrap:wrap; align-items:center;}
+  .income-stat{text-align:center;}
+  .income-stat .big{font-size:26px; font-weight:800;}
+  .income-stat .lbl{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em;}
+  .modal-overlay{position:fixed; inset:0; background:rgba(0,0,0,0.65); display:none; align-items:center; justify-content:center; z-index:100; padding:20px;}
+  .modal-box{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:20px; max-width:920px; width:100%; max-height:82vh; overflow:auto;}
+  .modal-header{display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;}
+  .modal-header h3{margin:0; font-size:16px;}
+  .gauge-card{cursor:pointer;}
+  .gauge-card:hover{border-color:var(--accent);}
+</style>
+</head>
+<body>
+
+<h1>⛽ Spending Fuel Gauge</h1>
+<div class="sub">Upload your bank exports, set your pay schedule, and see how spending in each category is pacing until your next income — including each category's CPC (Cash Per Category) burn rate, projected period total, and how that compares to last period, year-to-date, and the same period last year.</div>
+
+<div class="card">
+  <h2>1. Load your transaction files</h2>
+  <div class="row">
+    <div>
+      <label for="fileMulti">CSV files (select as many as you like)</label>
+      <input type="file" id="fileMulti" accept=".csv" multiple>
+    </div>
+    <button id="loadBtn">Load / Refresh Data</button>
+    <button class="secondary" id="clearBtn">Clear Saved Data</button>
+  </div>
+  <div class="meta" id="loadStatus" style="margin-top:10px;"></div>
+  <div class="row" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px;">
+    <div>
+      <label for="balanceFile">Account balance file (CSV export from your bank with a Balance column)</label>
+      <input type="file" id="balanceFile" accept=".csv">
+    </div>
+    <button class="secondary" id="loadBalanceBtn">Load Balance</button>
+  </div>
+  <div class="meta" id="balanceStatus" style="margin-top:10px;"></div>
+  <div class="row" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px;">
+    <div>
+      <button id="exportDataBtn">⬇ Export backup (.json)</button>
+    </div>
+    <div>
+      <label for="importDataFile">Import backup (.json)</label>
+      <input type="file" id="importDataFile" accept=".json">
+    </div>
+  </div>
+  <div class="meta" style="margin-top:8px;">This browser's data — transactions, ledger entries, income sources, categories, tiers, groups, keyword rules, and flags — lives only on this device/browser. <b>Export a backup regularly</b>, especially before switching browsers/computers or if things stop saving. Import loads a backup back in (replaces current data in this browser).</div>
+</div>
+
+<div class="card">
+  <h2>2. Income sources</h2>
+  <div class="row">
+    <div>
+      <label for="srcName">Source name</label>
+      <input type="text" id="srcName" placeholder="e.g. VA">
+    </div>
+    <div>
+      <label for="srcAmount">Amount</label>
+      <input type="number" id="srcAmount" step="0.01" placeholder="0.00">
+    </div>
+    <div>
+      <label for="srcFreq">Frequency</label>
+      <select id="srcFreq">
+        <option value="monthly_eom">Monthly (end of month)</option>
+      </select>
+    </div>
+    <div>
+      <label for="srcStart">Starts (optional — leave blank if already active)</label>
+      <input type="date" id="srcStart">
+    </div>
+    <button id="addSourceBtn">Add Source</button>
+  </div>
+  <div class="meta">A source with a future start date is listed but excluded from every income total and gauge until that date arrives.</div>
+  <div id="sourcesTableWrap" style="margin-top:12px;"></div>
+  <div id="incomeWidget" style="margin-top:16px;"></div>
+</div>
+
+<div class="card">
+  <h2>3. Checkbook ledger — manual entries</h2>
+  <div class="row">
+    <div>
+      <label for="ledDate">Date</label>
+      <input type="date" id="ledDate">
+    </div>
+    <div>
+      <label for="ledDesc">Description</label>
+      <input type="text" id="ledDesc" placeholder="e.g. Cash tip">
+    </div>
+    <div>
+      <label for="ledCat">Category</label>
+      <input type="text" id="ledCat" list="ledCatList" placeholder="e.g. Shopping">
+      <datalist id="ledCatList"></datalist>
+    </div>
+    <div>
+      <label for="ledAmount">Amount (+ income / − expense)</label>
+      <input type="number" id="ledAmount" step="0.01" placeholder="-25.00">
+    </div>
+    <button id="addLedgerBtn">Add Entry</button>
+  </div>
+  <div id="ledgerTableWrap" style="margin-top:12px;"></div>
+</div>
+
+<div class="card">
+  <h2>4. Keyword auto-categorization rules</h2>
+  <div class="meta" style="margin-bottom:10px;">New CSV uploads auto-assign a category to anything that arrives "Uncategorized," by scanning its description for these keywords. If you also set an amount, the transaction's amount must match it (± a penny) for the rule to apply — leave it blank to match on keyword alone. Rules are checked in order — put more specific keywords first. Click <b>"Apply Rules Now"</b> to sweep <b>every</b> transaction and ledger entry (not just Uncategorized ones) and move anything matching a rule into that rule's category — this is how you reorganize things that are already categorized.</div>
+  <div class="row">
+    <div>
+      <label for="ruleKeyword">Keyword to search for (optional if amount set)</label>
+      <input type="text" id="ruleKeyword" placeholder="e.g. transfer">
+    </div>
+    <div>
+      <label for="ruleAmount">Amount (optional — exact match)</label>
+      <input type="number" id="ruleAmount" step="0.01" placeholder="e.g. -25.00">
+    </div>
+    <div>
+      <label for="ruleCategorySelect">Assign category</label>
+      <select id="ruleCategorySelect" onchange="onRuleCategorySelectChange(this.value)">
+        <option value="">Select existing…</option>
+        <option value="__new__">+ New Category…</option>
+      </select>
+      <input type="text" id="ruleCategoryNew" placeholder="New category name" style="display:none; margin-top:4px; width:160px;">
+    </div>
+    <button id="addRuleBtn">Add Rule</button>
+    <button class="secondary" id="applyRulesBtn">Apply Rules Now</button>
+  </div>
+  <div id="rulesTableWrap" style="margin-top:12px;"></div>
+</div>
+
+<div class="card" id="masterListCard" style="display:none;">
+  <h2>5. Master Entry List — all loaded transactions</h2>
+  <div class="meta" style="margin-bottom:10px;">Every transaction and ledger entry currently loaded into the app and feeding the dashboard above — in one place. Search, sort by any column, recategorize, flag for review, or permanently delete an entry. Deletions are remembered, so a deleted entry won't come back even if you re-upload the same file.</div>
+  <div class="row" style="margin-bottom:10px;">
+    <div>
+      <label for="masterListSearchInput">Search (description, category, or source)</label>
+      <input type="text" id="masterListSearchInput" placeholder="e.g. target" oninput="setMasterListSearch(this.value)">
+    </div>
+  </div>
+  <div class="meta" id="masterListCount" style="margin-bottom:8px;"></div>
+  <div id="masterListTableWrap"></div>
+</div>
+
+<div class="card" id="dupeCard" style="display:none;">
+  <h2>6. Possible duplicates — needs review</h2>
+  <div class="meta" style="margin-bottom:10px;">Entries with the exact same category and amount, on different dates. Confirm once whether it's a normal recurring item or an accidental duplicate — your answer is remembered for future uploads.</div>
+  <div id="dupeTableWrap"></div>
+</div>
+
+<div class="card" id="flaggedCard" style="display:none;">
+  <h2>7. Flagged for review</h2>
+  <div class="meta" style="margin-bottom:10px;">Transactions you've manually flagged — e.g. multiple similar charges at the same place close together — so you and your family can double-check for errors or fraud before they get lost among everything else. Flag or unflag any transaction from its category's transaction list.</div>
+  <div class="row" id="flaggedBulkActions" style="margin-bottom:12px;"></div>
+  <div id="flaggedTableWrap"></div>
+</div>
+
+<div class="card" id="dataCard" style="display:none;">
+  <h2>8. Category fuel gauges</h2>
+  <div id="tierSummaryPanel" style="margin-bottom:16px;"></div>
+  <div class="tabs" id="periodTabs"></div>
+  <div class="meta" id="periodRangeLabel" style="margin-bottom:14px;"></div>
+  <div class="checks" id="catToggles" style="margin-bottom:14px;"></div>
+  <div id="gaugeSections"></div>
+  <div class="legend">
+    <span><i class="dot" style="background:var(--green)"></i>On pace (&lt;85%)</span>
+    <span><i class="dot" style="background:var(--yellow)"></i>Watch (85–100%)</span>
+    <span><i class="dot" style="background:var(--red)"></i>Over normal (&gt;100%)</span>
+  </div>
+</div>
+
+<div class="card" id="tierCard" style="display:none;">
+  <h2>9. Classify categories, spending tiers &amp; groups</h2>
+  <div class="meta" style="margin-bottom:10px;">Tag each category so gauges can be grouped by how essential the spending is. <b>Critical Fixed</b> = same amount every period, non-negotiable (mortgage, auto loan, allotments). <b>Critical Variable</b> = you must pay it, but the amount depends on usage (groceries, gas, utilities). <b>Discretionary</b> = controllable spending — the area to watch closest (shopping, dining, entertainment). Check <b>Hide from dashboard</b> for a category you're done tracking (e.g. a paid-off loan) — its gauge card disappears from section 8, but its transaction history, tier, and group stay intact and it can be unhidden any time.</div>
+  <div id="tierTableWrap"></div>
+</div>
+
+<div class="card" id="summaryCard" style="display:none;">
+  <h2>Summary — selected period</h2>
+  <div id="summaryTableWrap"></div>
+</div>
+
+<div class="card" id="noData">
+  <div class="empty">No data loaded yet. Upload your CSV files above and click "Load / Refresh Data".</div>
+</div>
+
+<div class="modal-overlay" id="txModalOverlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="txModalTitle">Transactions</h3>
+      <button class="secondary" onclick="closeTxModal()">Close</button>
+    </div>
+    <div id="txModalBody"></div>
+  </div>
+</div>
+
+<script>
+const DAY = 86400000;
+const PERIODS = [
+  {key:'daily', label:'Daily'},
+  {key:'weekly', label:'Weekly'},
+  {key:'monthly', label:'Monthly (Pay Period)'},
+  {key:'quarterly', label:'Quarterly'},
+  {key:'semiannual', label:'Semiannual'},
+  {key:'annual', label:'Annual'},
+];
+const EXCLUDE_FROM_TOTAL = new Set(['Transfer','Credit Card Payment','Investments']);
+
+let transactions = []; // {date:Date, dateStr, category, amount, description, source}
+let flaggedTx = {}; // transaction id -> {note: string, flaggedAt: 'YYYY-MM-DD'} — manually flagged for review (e.g. possible duplicate/fraud)
+let deletedTxIds = new Set(); // ids of bank-imported transactions the user has explicitly deleted — kept
+  // permanently so they don't silently reappear if the same seed data / CSV gets re-merged on reload
+let masterListSearch = '';
+let masterListSort = {col:'date', dir:'desc'};
+let currentPeriod = 'monthly';
+let disabledCats = new Set();
+let hiddenCats = new Set(); // categories fully hidden from the dashboard (section 8) — e.g. a loan that's paid off. Persisted, unlike disabledCats.
+let incomeSources = []; // {id, name, amount, frequency, startDate:'YYYY-MM-DD'|null}
+let ledgerEntries = []; // {id, date:'YYYY-MM-DD', description, category, amount}
+let dupeResolutions = {}; // ruleKey ('category|amount') -> 'recurring' | 'excluded'
+let keywordRules = []; // {id, keyword, category} - checked in order against description when category is Uncategorized
+let categoryTiers = {}; // category -> 'critical-fixed' | 'critical-variable' | 'discretionary' | 'unclassified'
+let categoryParents = {}; // category -> parent group name (e.g. 'Truck Fuel' -> 'Fuel'); absent/empty = top-level
+let groupExpanded = new Set(); // parent group names currently expanded on the dashboard
+let currentAccountBalance = null; // number, from most recent row of an uploaded balance file
+let currentAccountBalanceDate = null; // 'YYYY-MM-DD'
+let currentAccountBalanceSource = null; // file name
+let lastStats = {}; // cache of computeCategoryStats() result, refreshed each render() — used by the fuel-rate modal panel
+
+// ---------- persistence ----------
+function saveLS(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+function loadLS(key){ try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }catch(e){ return null; } }
+
+// ---------- backup / restore (export & import all app data as a .json file) ----------
+// All app data lives in this browser's localStorage, which is NOT part of this HTML file and
+// can silently fail to persist (e.g. local-file storage restrictions, a different browser/profile,
+// or a new copy of the file at a different path). Export/Import gives a real, portable backup
+// that works no matter what the browser does with localStorage.
+const FUELGAUGE_LS_KEYS = [
+  'fuelgauge_transactions','fuelgauge_ledger','fuelgauge_balance','fuelgauge_incomesources',
+  'fuelgauge_keyword_rules','fuelgauge_category_tiers','fuelgauge_category_parents',
+  'fuelgauge_group_expanded','fuelgauge_dupe_rules','fuelgauge_flagged_tx','fuelgauge_deleted_tx',
+  'fuelgauge_hidden_cats'
+];
+function exportData(){
+  const bundle = {_app:'spending-fuel-gauge', _exportedAt: new Date().toISOString()};
+  FUELGAUGE_LS_KEYS.forEach(k=>{ bundle[k] = loadLS(k); });
+  const blob = new Blob([JSON.stringify(bundle, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `fuelgauge_backup_${fmtDate(new Date())}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function importDataFromFile(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    let bundle;
+    try{ bundle = JSON.parse(e.target.result); }
+    catch(err){ alert('Could not read that file — is it a Spending Fuel Gauge backup (.json)?'); return; }
+    if(!bundle || bundle._app!=='spending-fuel-gauge'){
+      if(!confirm('This file doesn\'t look like a Spending Fuel Gauge backup. Import anyway?')) return;
+    } else if(!confirm(`Import backup from ${bundle._exportedAt ? new Date(bundle._exportedAt).toLocaleString() : 'unknown date'}? This replaces all current data in this browser (transactions, categories, flags, income sources, etc.).`)){
+      return;
+    }
+    FUELGAUGE_LS_KEYS.forEach(k=>{ if(bundle[k]!==undefined) saveLS(k, bundle[k]); });
+    reloadAllStateFromStorage();
+    alert('Backup imported.');
+  };
+  reader.readAsText(file);
+}
+// Re-reads every piece of app state from localStorage into memory and re-renders — used after
+// importing a backup, so the newly-restored data shows up immediately without a page reload.
+function reloadAllStateFromStorage(){
+  loadKeywordRules();
+  loadCategoryTiers();
+  loadCategoryParents();
+  loadGroupExpanded();
+  loadHiddenCats();
+  loadDupeResolutions();
+  loadFlaggedTx();
+  loadDeletedTxIds();
+  incomeSources = loadLS('fuelgauge_incomesources') || [];
+  ledgerEntries = loadLS('fuelgauge_ledger') || [];
+  const cachedBalance = loadLS('fuelgauge_balance');
+  if(cachedBalance){
+    currentAccountBalance = cachedBalance.balance;
+    currentAccountBalanceDate = cachedBalance.date;
+    currentAccountBalanceSource = cachedBalance.source;
+  }
+  const cachedTx = loadLS('fuelgauge_transactions') || [];
+  transactions = cachedTx.map(t=>({...t, date: new Date(t.date)}));
+  renderBalanceStatus();
+  render();
+}
+
+// ---------- date parsing ----------
+function parseDate(str){
+  if(!str) return null;
+  str = str.trim();
+  if(/^\d{4}-\d{2}-\d{2}/.test(str)){
+    const [y,m,d] = str.split('-').map(Number);
+    return new Date(y, m-1, d);
+  }
+  const parts = str.split('/');
+  if(parts.length===3){
+    let [m,d,y] = parts.map(Number);
+    if(y<100) y += 2000;
+    return new Date(y, m-1, d);
+  }
+  const dt = new Date(str);
+  return isNaN(dt) ? null : dt;
+}
+function fmtDate(d){ return d.toISOString().slice(0,10); }
+function normDesc(s){ return (s||'').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,14); }
+function money(n){ return (n<0?'-$':'$') + Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function escapeHtml(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+// base64 helpers for safely passing arbitrary strings (filenames, category names, etc. that may
+// contain quotes/ampersands/unicode) through inline HTML event-handler attributes.
+function b64e(s){ return btoa(unescape(encodeURIComponent(String(s)))); }
+function b64d(s){ return decodeURIComponent(escape(atob(s))); }
+
+// ---------- keyword auto-categorization ----------
+function loadKeywordRules(){ keywordRules = loadLS('fuelgauge_keyword_rules') || []; }
+function saveKeywordRules(){ saveLS('fuelgauge_keyword_rules', keywordRules); }
+function matchKeywordRule(description, amount){
+  const desc = (description||'').toLowerCase();
+  for(const rule of keywordRules){
+    if(rule.keyword && !desc.includes(rule.keyword.toLowerCase())) continue;
+    if(rule.amount!=null && (amount==null || isNaN(amount) || Math.abs(Math.abs(amount)-Math.abs(rule.amount))>0.01)) continue;
+    return rule.category;
+  }
+  return null;
+}
+// Toggles the free-text box on/off when "+ New Category…" is picked from the dropdown, so brand
+// new categories can still be created right here instead of only from existing ones.
+function onRuleCategorySelectChange(val){
+  const newInput = document.getElementById('ruleCategoryNew');
+  if(!newInput) return;
+  if(val==='__new__'){ newInput.style.display='inline-block'; newInput.value=''; newInput.focus(); }
+  else { newInput.style.display='none'; newInput.value=''; }
+}
+function addKeywordRule(){
+  const kw = document.getElementById('ruleKeyword').value.trim();
+  const amtRaw = document.getElementById('ruleAmount').value;
+  const amt = amtRaw.trim()==='' ? null : parseFloat(amtRaw);
+  const sel = document.getElementById('ruleCategorySelect');
+  const newInput = document.getElementById('ruleCategoryNew');
+  const cat = (sel.value==='__new__' ? newInput.value : sel.value).trim();
+  if((!kw && amt==null) || !cat){ alert('Enter a keyword and/or an amount, plus a category.'); return; }
+  keywordRules.push({id: Date.now()+Math.random(), keyword: kw, amount: amt, category: cat});
+  saveKeywordRules();
+  document.getElementById('ruleKeyword').value = '';
+  document.getElementById('ruleAmount').value = '';
+  sel.value = '';
+  newInput.value = '';
+  newInput.style.display = 'none';
+  render();
+}
+function deleteKeywordRule(id){
+  keywordRules = keywordRules.filter(r=>r.id!==id);
+  saveKeywordRules();
+  render();
+}
+function renderRulesTable(){
+  const wrap = document.getElementById('rulesTableWrap');
+  if(!wrap) return;
+  if(keywordRules.length===0){ wrap.innerHTML = '<div class="meta">No keyword rules yet.</div>'; return; }
+  let rows = '';
+  keywordRules.forEach(r=>{
+    rows += `<tr>
+      <td>${r.keyword ? escapeHtml(r.keyword) : '<span class="meta">(any)</span>'}</td>
+      <td>${r.amount!=null ? money(r.amount) : '<span class="meta">(any)</span>'}</td>
+      <td>${escapeHtml(r.category)}</td>
+      <td><button class="secondary" style="padding:4px 8px;font-size:11px;" onclick="deleteKeywordRule(${r.id})">Delete</button></td>
+    </tr>`;
+  });
+  wrap.innerHTML = `<table>
+    <tr><th>Keyword</th><th>Amount</th><th>Category assigned</th><th></th></tr>
+    ${rows}
+  </table>`;
+}
+// "Apply Rules Now" sweeps EVERY transaction and ledger entry — not just "Uncategorized" ones —
+// and reassigns anything that matches a rule to that rule's category. This lets a rule you just
+// added reclassify things that were already sitting in some other category (e.g. move "USAA
+// Property and Casualty Insurance" out of "Financial" into "Home & Auto Insurance"), which is
+// what makes rules actually useful for reorganizing an already-categorized dataset.
+// (New CSV uploads still only auto-fill truly Uncategorized rows on import — this manual sweep
+// is the one place rules are allowed to override an existing category.)
+function reapplyKeywordRules(){
+  let changed = 0;
+  transactions.forEach(t=>{
+    const guess = matchKeywordRule(t.description, t.amount);
+    if(guess && guess!==t.category){ t.category = guess; changed++; }
+  });
+  ledgerEntries.forEach(e=>{
+    const guess = matchKeywordRule(e.description, e.amount);
+    if(guess && guess!==e.category){ e.category = guess; changed++; }
+  });
+  if(changed>0){
+    saveLS('fuelgauge_transactions', transactions);
+    saveLS('fuelgauge_ledger', ledgerEntries);
+  }
+  render();
+  alert(changed>0 ? `Recategorized ${changed} entr${changed===1?'y':'ies'} using keyword rules.` : 'No entries matched any current rule (or everything that matches is already in that category).');
+}
+function populateDatalist(id, cats){
+  const dl = document.getElementById(id);
+  if(!dl) return;
+  dl.innerHTML = cats.map(c=>`<option value="${escapeHtml(c)}">`).join('');
+}
+// Rebuilds the section-4 "Assign category" dropdown with every category currently in use, plus a
+// "+ New Category…" option that reveals the free-text box (see onRuleCategorySelectChange).
+function populateRuleCategorySelect(cats){
+  const sel = document.getElementById('ruleCategorySelect');
+  if(!sel) return;
+  const current = sel.value;
+  sel.innerHTML = `<option value="">Select existing…</option>`
+    + cats.slice().sort().map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')
+    + `<option value="__new__">+ New Category…</option>`;
+  if(current && [...sel.options].some(o=>o.value===current)) sel.value = current;
+}
+
+// ---------- spending tier classification ----------
+const TIER_DEFS = [
+  {key:'critical-fixed', label:'Critical Fixed', hint:'Same amount every period — non-negotiable.'},
+  {key:'critical-variable', label:'Critical Variable', hint:'Must pay, amount varies with usage.'},
+  {key:'discretionary', label:'Discretionary', hint:'Controllable — watch this closest.'},
+  {key:'unclassified', label:'Unclassified', hint:''}
+];
+const TIER_LABEL = Object.fromEntries(TIER_DEFS.map(t=>[t.key,t.label]));
+function loadCategoryTiers(){ categoryTiers = loadLS('fuelgauge_category_tiers') || {}; }
+function saveCategoryTiers(){ saveLS('fuelgauge_category_tiers', categoryTiers); }
+function guessTier(category){
+  const c = (category||'').toLowerCase();
+  const fixed = ['mortgage','rent','auto payment','auto loan','student loan','loan','allotment'];
+  const variable = ['bills & utilities','utilities','grocery','groceries','gas','electric','water','fuel'];
+  const discretionary = ['shopping','amazon','retail','clothes','shoes','gift','entertainment','dining','fast food','restaurant','movie'];
+  if(fixed.some(k=>c.includes(k))) return 'critical-fixed';
+  if(variable.some(k=>c.includes(k))) return 'critical-variable';
+  if(discretionary.some(k=>c.includes(k))) return 'discretionary';
+  return 'unclassified';
+}
+function ensureTiersForCategories(cats){
+  let changed = false;
+  cats.forEach(c=>{
+    if(!categoryTiers[c]){ categoryTiers[c] = guessTier(c); changed = true; }
+  });
+  if(changed) saveCategoryTiers();
+}
+// Renames a category everywhere it's referenced: every transaction & ledger entry, its tier,
+// its own Parent group setting, any OTHER category's Parent group path that names this category
+// as a group segment, every keyword rule, and any duplicate-resolution key (section 6) built from
+// its name. If newName already exists as a separate category, this merges oldName into it
+// (transactions move over; oldName's tier/parent settings are discarded in favor of newName's).
+function renameCategory(oldName, newNameRaw){
+  const newName = (newNameRaw||'').trim();
+  if(!newName || newName===oldName) return;
+  const merging = Object.prototype.hasOwnProperty.call(categoryTiers, newName) || [...transactions, ...ledgerEntries].some(t=>t.category===newName);
+  if(merging && !confirm(`"${newName}" already exists. Merge all "${oldName}" transactions into it? This can't be undone.`)) return;
+
+  transactions.forEach(t=>{ if(t.category===oldName) t.category = newName; });
+  ledgerEntries.forEach(e=>{ if(e.category===oldName) e.category = newName; });
+  saveLS('fuelgauge_transactions', transactions);
+  saveLS('fuelgauge_ledger', ledgerEntries);
+
+  if(!merging){
+    if(categoryTiers[oldName]!==undefined){ categoryTiers[newName] = categoryTiers[oldName]; }
+    if(categoryParents[oldName]!==undefined){ categoryParents[newName] = categoryParents[oldName]; }
+  }
+  delete categoryTiers[oldName];
+  delete categoryParents[oldName];
+  // Any category grouped under oldName (as a path segment) needs its path text updated too,
+  // e.g. "Auto > Loan Payments" -> "Vehicles > Loan Payments" when "Auto" is renamed "Vehicles".
+  Object.keys(categoryParents).forEach(c=>{
+    const segs = categoryParents[c].split('>').map(s=>s.trim());
+    let changed = false;
+    const newSegs = segs.map(s=>{ if(s===oldName){ changed = true; return newName; } return s; });
+    if(changed) categoryParents[c] = newSegs.join(' > ');
+  });
+  saveCategoryTiers();
+  saveCategoryParents();
+
+  keywordRules.forEach(r=>{ if(r.category===oldName) r.category = newName; });
+  saveKeywordRules();
+
+  const oldPrefix = oldName+'|';
+  Object.keys(dupeResolutions).forEach(k=>{
+    if(k.startsWith(oldPrefix)){
+      const newKey = newName+'|'+k.slice(oldPrefix.length);
+      dupeResolutions[newKey] = dupeResolutions[k];
+      delete dupeResolutions[k];
+    }
+  });
+  saveDupeResolutions();
+
+  render();
+}
+// Turns a Category cell in section 5 into an inline text input on click, committing the rename
+// on blur/Enter and reverting (no-op) on Escape.
+function editCategoryCell(span, oldName){
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = oldName;
+  input.style.width = '160px';
+  const commit = ()=>{
+    const val = input.value.trim();
+    input.replaceWith(span);
+    if(val && val!==oldName) renameCategory(oldName, val);
+  };
+  input.onblur = commit;
+  input.onkeydown = (e)=>{
+    if(e.key==='Enter'){ input.blur(); }
+    else if(e.key==='Escape'){ input.value = oldName; input.blur(); }
+  };
+  span.replaceWith(input);
+  input.focus();
+  input.select();
+}
+function setTier(category, tier){
+  categoryTiers[category] = tier;
+  saveCategoryTiers();
+  render();
+}
+
+// ---------- category grouping (parent/child, e.g. "Fuel" -> Truck Fuel, Van Fuel, Yard Equipment Fuel) ----------
+// Tiers and their dollar totals always stay computed at the LEAF (real transaction) category level —
+// grouping only changes how cards are displayed/collapsed, never how the tier totals in section 7 are summed.
+function loadCategoryParents(){ categoryParents = loadLS('fuelgauge_category_parents') || {}; }
+function saveCategoryParents(){ saveLS('fuelgauge_category_parents', categoryParents); }
+function loadHiddenCats(){ hiddenCats = new Set(loadLS('fuelgauge_hidden_cats') || []); }
+function saveHiddenCats(){ saveLS('fuelgauge_hidden_cats', [...hiddenCats]); }
+// Fully hides/unhides a category's gauge card from the section 8 dashboard (and the selected-period
+// summary table) — for spending that's done for good, e.g. a paid-off loan, without deleting its
+// transaction history or losing its tier/group settings. Toggle it back on any time from section 9.
+function setCategoryHidden(category, hidden){
+  if(hidden) hiddenCats.add(category); else hiddenCats.delete(category);
+  saveHiddenCats();
+  render();
+}
+function loadGroupExpanded(){ groupExpanded = new Set(loadLS('fuelgauge_group_expanded') || []); }
+function saveGroupExpanded(){ saveLS('fuelgauge_group_expanded', [...groupExpanded]); }
+function setParentGroup(category, parentRaw){
+  const val = (parentRaw||'').trim();
+  if(!val || val===category){ delete categoryParents[category]; }
+  else { categoryParents[category] = val; }
+  saveCategoryParents();
+  render();
+}
+function toggleGroup(name){
+  if(groupExpanded.has(name)) groupExpanded.delete(name); else groupExpanded.add(name);
+  saveGroupExpanded();
+  render();
+}
+function renderTierTable(cats){
+  const card = document.getElementById('tierCard');
+  const wrap = document.getElementById('tierTableWrap');
+  if(cats.length===0){ card.style.display='none'; return; }
+  card.style.display='block';
+  // Group paths use ">" as a level separator, e.g. "Insurance > Property > Home" — any depth is
+  // supported. The datalist offers every full path already in use so you can stay consistent
+  // instead of retyping (a typo breaks the rollup since it'd create a new, separate branch).
+  const groupPaths = [...new Set(Object.values(categoryParents).filter(Boolean))].sort();
+  const groupOptions = groupPaths.map(g=>`<option value="${escapeHtml(g)}">`).join('');
+  // Visible <select> dropdown listing every full group path already in use, so you can see and
+  // pick from what's been created instead of having to type/remember it (the datalist below still
+  // offers autocomplete for new/nested paths).
+  const pickerOptions = `<option value="">▾ pick existing…</option>` + groupPaths.map(g=>`<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('');
+  let rows = '';
+  cats.slice().sort().forEach((c,idx)=>{
+    const current = categoryTiers[c] || 'unclassified';
+    const options = TIER_DEFS.map(t=>`<option value="${t.key}" ${t.key===current?'selected':''}>${t.label}</option>`).join('');
+    const parentVal = categoryParents[c] || '';
+    const inputId = `pgInput_${idx}`;
+    rows += `<tr>
+      <td><span class="catNameCell" title="Click to rename" style="cursor:pointer; border-bottom:1px dashed var(--muted);" onclick="editCategoryCell(this, b64d('${b64e(c)}'))">${escapeHtml(c)}</span></td>
+      <td><select onchange="setTier(b64d('${b64e(c)}'), this.value)">${options}</select></td>
+      <td>
+        <input id="${inputId}" type="text" list="parentGroupList" value="${escapeHtml(parentVal)}" placeholder="(top-level)" style="width:200px;" onchange="setParentGroup(b64d('${b64e(c)}'), this.value)">
+        <select style="width:32px;margin-left:2px;" title="Pick an existing group" onchange="if(this.value){document.getElementById('${inputId}').value=this.value; setParentGroup(b64d('${b64e(c)}'), this.value);} this.selectedIndex=0;">${pickerOptions}</select>
+      </td>
+      <td style="text-align:center;">
+        <label style="cursor:pointer;" title="Hide this category's gauge card from the section 8 dashboard without deleting its history"><input type="checkbox" ${hiddenCats.has(c)?'checked':''} onchange="setCategoryHidden(b64d('${b64e(c)}'), this.checked)"></label>
+      </td>
+    </tr>`;
+  });
+  // Reference tree of every group path already in use, so it's easy to see the structure you've
+  // built so far and copy the exact spelling for a new sibling/child category.
+  const knownTreeHtml = renderKnownPathsReference(groupPaths);
+  wrap.innerHTML = `<table>
+    <tr><th>Category</th><th>Tier</th><th>Parent group (path)</th><th>Hide from dashboard</th></tr>
+    ${rows}
+  </table>
+  <datalist id="parentGroupList">${groupOptions}</datalist>
+  <div class="meta" style="margin-top:8px;">Use "&gt;" to nest a category any number of levels deep, e.g. "Insurance &gt; Property &gt; Home" for a category named "Flood." Every level gets its own subtotal and expand/collapse on the dashboard. Leave blank for a top-level, standalone category. Use the exact same path text for every category that belongs together — a typo creates a separate branch instead of joining the existing one.</div>
+  ${knownTreeHtml}`;
+}
+// Builds a small indented text tree of every distinct group path currently in use, purely as a
+// spelling/consistency reference while typing new Parent group values above.
+function renderKnownPathsReference(groupPaths){
+  if(groupPaths.length===0) return '';
+  const segSet = new Set();
+  groupPaths.forEach(p=>{
+    const segs = p.split('>').map(s=>s.trim()).filter(Boolean);
+    let cur = '';
+    segs.forEach(s=>{ cur = cur ? cur+' > '+s : s; segSet.add(cur); });
+  });
+  const allPaths = [...segSet].sort();
+  const lines = allPaths.map(p=>{
+    const depth = p.split('>').length - 1;
+    const label = p.split('>').pop().trim();
+    return `<div style="padding-left:${depth*16}px;">${depth>0?'↳ ':''}${escapeHtml(label)} <span class="meta" style="font-size:10px;">(${escapeHtml(p)})</span></div>`;
+  }).join('');
+  return `<div class="meta" style="margin-top:10px;"><b>Group paths currently in use:</b><div style="margin-top:4px;font-family:monospace;font-size:11px;">${lines}</div></div>`;
+}
+function renderTierSummary(){
+  const panel = document.getElementById('tierSummaryPanel');
+  if(!panel) return;
+  const stats = computeCategoryStats();
+  const cats = Object.keys(stats);
+  if(cats.length===0){ panel.innerHTML=''; return; }
+  const today = new Date();
+  const {start,end} = periodBounds('monthly', today); // always measured against the current calendar/pay-period month, regardless of the selected tab
+  const totals = {'critical-fixed':0, 'critical-variable':0, 'discretionary':0, 'unclassified':0};
+  cats.forEach(c=>{
+    const tier = categoryTiers[c] || 'unclassified';
+    const spend = stats[c].txs.filter(t=>t.date>=start && t.date<end).reduce((s,t)=>s+Math.abs(t.amount),0);
+    totals[tier] += spend;
+  });
+  const survival = totals['critical-fixed'] + totals['critical-variable'];
+  const totalMonthlyIncome = incomeSources.filter(src=>isIncomeActive(src, today)).reduce((s,src)=>s+src.amount,0);
+  const discPct = totalMonthlyIncome>0 ? (totals['discretionary']/totalMonthlyIncome)*100 : null;
+  panel.innerHTML = `<div class="income-box">
+    <div class="income-stat"><div class="big">${money(totals['critical-fixed'])}</div><div class="lbl">critical fixed (this month)</div></div>
+    <div class="income-stat"><div class="big">${money(totals['critical-variable'])}</div><div class="lbl">critical variable (this month)</div></div>
+    <div class="income-stat"><div class="big">${money(survival)}</div><div class="lbl">survival total (fixed + variable)</div></div>
+    <div class="income-stat"><div class="big" style="color:var(--yellow)">${money(totals['discretionary'])}</div><div class="lbl">discretionary (this month)</div></div>
+    <div class="income-stat"><div class="big" style="color:${discPct==null?'var(--text)':(discPct>30?'var(--red)':discPct>15?'var(--yellow)':'var(--green)')}">${discPct==null?'—':discPct.toFixed(0)+'%'}</div><div class="lbl">discretionary vs monthly income</div></div>
+  </div>`;
+}
+
+// ---------- parsing + merge ----------
+function normalizeBk(rows, sourceFile){
+  return rows.map((r,i)=>{
+    const date = parseDate(r['Date']);
+    const amount = parseFloat(r['Amount']);
+    if(!date || isNaN(amount)) return null;
+    let category = (r['Category']||'Uncategorized').trim() || 'Uncategorized';
+    if(category==='Uncategorized'){
+      const guess = matchKeywordRule(r['Description'], amount);
+      if(guess) category = guess;
+    }
+    return {
+      id: 'bk#'+(sourceFile||'')+'#'+i,
+      date, dateStr: fmtDate(date),
+      category,
+      amount, description: r['Description']||'',
+      originalDesc: r['Original Description']||'',
+      status: r['Status']||'',
+      source: sourceFile||'bk'
+    };
+  }).filter(Boolean);
+}
+function normalizeTx(rows, sourceFile){
+  return rows.map((r,i)=>{
+    const date = parseDate(r['Date']);
+    let amount = parseFloat(r['Amount']);
+    if(!date || isNaN(amount)) return null;
+    const type = (r['Type']||'').trim();
+    if(type.toLowerCase()==='debit') amount = -Math.abs(amount);
+    else if(type.toLowerCase()==='credit') amount = Math.abs(amount);
+    let category = (r['Category']||r['Parent Category']||'Uncategorized').trim() || 'Uncategorized';
+    if(category==='Uncategorized'){
+      const guess = matchKeywordRule(r['Description'], amount);
+      if(guess) category = guess;
+    }
+    return {
+      id: 'tx#'+(sourceFile||'')+'#'+i,
+      date, dateStr: fmtDate(date),
+      category,
+      amount, description: r['Description']||'',
+      originalDesc: r['Original Description']||'',
+      status: type || (r['Pending']==='true' ? 'Pending' : ''),
+      source: sourceFile||'tx'
+    };
+  }).filter(Boolean);
+}
+// Exact duplicate: same date AND same exact amount -> keep only the first occurrence.
+function exactDedupe(rows){
+  const sorted = rows.slice().sort((a,b)=>a.date-b.date);
+  const seen = new Set();
+  const merged = [];
+  let dupesCollapsed = 0;
+  sorted.forEach(t=>{
+    const k = t.dateStr+'|'+t.amount.toFixed(2);
+    if(seen.has(k)){ dupesCollapsed++; return; }
+    seen.add(k);
+    merged.push(t);
+  });
+  return {merged, dupesCollapsed};
+}
+
+function parseCsvFile(file){
+  return new Promise((resolve,reject)=>{
+    Papa.parse(file, {
+      header:true, skipEmptyLines:true,
+      complete: res => resolve(res.data),
+      error: err => reject(err)
+    });
+  });
+}
+
+async function loadData(){
+  const files = Array.from(document.getElementById('fileMulti').files || []);
+  const status = document.getElementById('loadStatus');
+  if(files.length===0){
+    const cached = loadLS('fuelgauge_transactions');
+    if(cached){
+      transactions = cached.map(t=>({...t, date:new Date(t.date)}));
+      status.textContent = `Loaded ${transactions.length} saved transactions from last session.`;
+      buildUI();
+    } else {
+      status.textContent = 'Choose at least one CSV file.';
+    }
+    return;
+  }
+  let allRaw = [];
+  let fileSummaries = [];
+  for(const file of files){
+    const rows = await parseCsvFile(file);
+    const fields = rows.length ? Object.keys(rows[0]) : [];
+    const isTx = fields.includes('Type');
+    const norm = isTx ? normalizeTx(rows, file.name) : normalizeBk(rows, file.name);
+    allRaw = allRaw.concat(norm);
+    fileSummaries.push(`${file.name}: ${norm.length} rows (${isTx?'transactions format':'bank download format'})`);
+  }
+  const {merged, dupesCollapsed} = exactDedupe(allRaw);
+  // Re-apply any explicit deletions so re-uploading the same file doesn't bring back a
+  // transaction you already deleted.
+  transactions = merged.filter(t=>!deletedTxIds.has(t.id)).sort((a,b)=>a.date-b.date);
+  saveLS('fuelgauge_transactions', transactions);
+  status.textContent = `${fileSummaries.join(' · ')} → ${transactions.length} unique transactions (removed ${dupesCollapsed} exact duplicate${dupesCollapsed===1?'':'s'} with the same date & amount).`;
+  buildUI();
+}
+
+// ---------- account balance file ----------
+// Reads a bank-exported CSV that includes a running "Balance" column (not the plain
+// transaction exports used above) and sets the current account balance from the row
+// with the most recent date. This is the real dollar amount left in the "tank".
+function findBalanceColumn(fields){
+  return fields.find(f=> /balance/i.test(f)) || null;
+}
+async function loadBalanceFile(){
+  const input = document.getElementById('balanceFile');
+  const status = document.getElementById('balanceStatus');
+  const file = input.files && input.files[0];
+  if(!file){
+    renderBalanceStatus();
+    return;
+  }
+  const rows = await parseCsvFile(file);
+  if(!rows.length){ status.textContent = 'That file had no rows.'; return; }
+  const fields = Object.keys(rows[0]);
+  const balCol = findBalanceColumn(fields);
+  const dateCol = fields.find(f=> /^date$/i.test(f)) || fields.find(f=> /date/i.test(f));
+  if(!balCol || !dateCol){
+    status.textContent = `Couldn't find a Balance and Date column in ${file.name} (found columns: ${fields.join(', ')}). Export a statement/balance CSV from your bank that includes a running balance.`;
+    return;
+  }
+  let best = null;
+  rows.forEach(r=>{
+    const d = parseDate(r[dateCol]);
+    const bal = parseFloat(String(r[balCol]).replace(/[$,]/g,''));
+    if(!d || isNaN(bal)) return;
+    if(!best || d > best.date) best = {date:d, bal};
+  });
+  if(!best){ status.textContent = `Found columns but no valid date/balance rows in ${file.name}.`; return; }
+  currentAccountBalance = best.bal;
+  currentAccountBalanceDate = fmtDate(best.date);
+  currentAccountBalanceSource = file.name;
+  saveLS('fuelgauge_balance', {balance: currentAccountBalance, date: currentAccountBalanceDate, source: currentAccountBalanceSource});
+  renderBalanceStatus();
+  render();
+}
+function renderBalanceStatus(){
+  const status = document.getElementById('balanceStatus');
+  if(!status) return;
+  status.textContent = currentAccountBalance!=null
+    ? `Current account balance: ${money(currentAccountBalance)} as of ${currentAccountBalanceDate} (from ${currentAccountBalanceSource}).`
+    : 'No balance file loaded yet. Upload a bank export that includes a running Balance column.';
+}
+
+// ---------- ledger ----------
+function ledgerAsTx(){
+  return ledgerEntries.map(e=>({
+    id: 'ledger-'+e.id,
+    date: new Date(e.date+'T00:00:00'), dateStr: e.date,
+    category: e.category || 'Uncategorized',
+    amount: parseFloat(e.amount),
+    description: e.description || '(ledger entry)',
+    originalDesc: '',
+    status: 'Manual entry',
+    source: 'Manual ledger entry'
+  })).filter(t=>!isNaN(t.amount) && t.date instanceof Date && !isNaN(t.date));
+}
+// ---------- manual "flag for review" on individual transactions ----------
+function loadFlaggedTx(){ flaggedTx = loadLS('fuelgauge_flagged_tx') || {}; }
+function saveFlaggedTx(){ saveLS('fuelgauge_flagged_tx', flaggedTx); }
+function toggleTxFlag(id){
+  if(flaggedTx[id]) delete flaggedTx[id];
+  else flaggedTx[id] = {note:'', flaggedAt: fmtDate(new Date())};
+  saveFlaggedTx();
+  renderTxModalBody();
+  renderFlaggedTable();
+}
+function setTxFlagNote(id, note){
+  if(!flaggedTx[id]) return;
+  flaggedTx[id].note = note;
+  saveFlaggedTx();
+}
+function unflagTx(id){
+  delete flaggedTx[id];
+  saveFlaggedTx();
+  renderTxModalBody();
+  renderFlaggedTable();
+}
+function findTxById(id){
+  const t = transactions.find(t=>t.id===id);
+  if(t) return t;
+  return ledgerAsTx().find(t=>t.id===id);
+}
+
+// ---------- delete transactions ----------
+function loadDeletedTxIds(){ deletedTxIds = new Set(loadLS('fuelgauge_deleted_tx') || []); }
+function saveDeletedTxIds(){ saveLS('fuelgauge_deleted_tx', [...deletedTxIds]); }
+function deleteTransaction(id){
+  const t = findTxById(id);
+  if(!t) return;
+  if(!confirm(`Delete this transaction permanently?\n\n${t.dateStr} — ${t.description||''} — ${money(t.amount)}\n\nThis cannot be undone, and it won't reappear even if you re-upload the same file.`)) return;
+  if(String(id).startsWith('ledger-')){
+    const realId = String(id).slice('ledger-'.length);
+    ledgerEntries = ledgerEntries.filter(e=> String(e.id)!==realId);
+    saveLS('fuelgauge_ledger', ledgerEntries);
+  } else {
+    deletedTxIds.add(id);
+    saveDeletedTxIds();
+    transactions = transactions.filter(tx=>tx.id!==id);
+    saveLS('fuelgauge_transactions', transactions);
+    if(flaggedTx[id]){ delete flaggedTx[id]; saveFlaggedTx(); }
+  }
+  render();
+}
+
+// ---------- Master Entry List (section 9) — every transaction/ledger entry feeding the dashboard ----------
+function setMasterListSort(col){
+  if(masterListSort.col===col){ masterListSort.dir = masterListSort.dir==='asc'?'desc':'asc'; }
+  else { masterListSort = {col, dir: col==='date' ? 'desc' : 'asc'}; }
+  renderMasterList();
+}
+function masterListSortArrow(col){ return masterListSort.col===col ? (masterListSort.dir==='asc'?' ▲':' ▼') : ''; }
+function setMasterListSearch(val){
+  masterListSearch = val;
+  renderMasterList();
+}
+function renderMasterList(){
+  const card = document.getElementById('masterListCard');
+  const wrap = document.getElementById('masterListTableWrap');
+  const countEl = document.getElementById('masterListCount');
+  if(!card || !wrap) return;
+  const all = transactions.concat(ledgerAsTx());
+  card.style.display = all.length ? 'block' : 'none';
+  if(all.length===0) return;
+  const q = masterListSearch.trim().toLowerCase();
+  const filtered = q ? all.filter(t=>
+      (t.description||'').toLowerCase().includes(q) ||
+      (t.category||'').toLowerCase().includes(q) ||
+      (t.source||'').toLowerCase().includes(q)
+    ) : all;
+  const cmp = TX_SORTERS[masterListSort.col] || TX_SORTERS.date;
+  filtered.sort((a,b)=> masterListSort.dir==='asc' ? cmp(a,b) : -cmp(a,b));
+  const cats = [...new Set(all.map(t=>t.category))].sort();
+
+  const rows = filtered.map(t=>{
+    const flagged = !!flaggedTx[t.id];
+    const catOptions = cats.map(c=>`<option value="${escapeHtml(c)}" ${c===t.category?'selected':''}>${escapeHtml(c)}</option>`).join('')
+      + `<option value="__new__">+ New category…</option>`;
+    return `<tr ${flagged?'style="background:rgba(255,92,92,0.14);"':''}>
+      <td>${t.dateStr}</td>
+      <td>${escapeHtml(t.description||'')}</td>
+      <td style="font-size:11px;">${escapeHtml(t.source||'')}</td>
+      <td style="color:${t.amount<0?'var(--red)':'var(--green)'}">${money(t.amount)}</td>
+      <td><select onchange="handleRecatSelect(b64d('${b64e(t.id)}'), this)">${catOptions}</select></td>
+      <td style="text-align:center;"><input type="checkbox" ${flagged?'checked':''} title="Flag for review" onchange="toggleTxFlag(b64d('${b64e(t.id)}')); renderMasterList();"></td>
+      <td><button class="secondary" style="padding:4px 8px;font-size:11px;" onclick="deleteTransaction(b64d('${b64e(t.id)}'))">🗑 Delete</button></td>
+    </tr>`;
+  }).join('');
+
+  if(countEl) countEl.textContent = `${filtered.length} of ${all.length} entries shown`;
+  wrap.innerHTML = `<div style="max-height:480px; overflow:auto;">
+    <table>
+      <tr>
+        <th style="cursor:pointer;user-select:none;" onclick="setMasterListSort('date')">Date${masterListSortArrow('date')}</th>
+        <th style="cursor:pointer;user-select:none;" onclick="setMasterListSort('description')">Description${masterListSortArrow('description')}</th>
+        <th style="cursor:pointer;user-select:none;" onclick="setMasterListSort('source')">Source${masterListSortArrow('source')}</th>
+        <th style="cursor:pointer;user-select:none;" onclick="setMasterListSort('amount')">Amount${masterListSortArrow('amount')}</th>
+        <th style="cursor:pointer;user-select:none;" onclick="setMasterListSort('category')">Category${masterListSortArrow('category')}</th>
+        <th>Flag</th>
+        <th></th>
+      </tr>
+      ${rows || '<tr><td colspan="7" class="meta">No entries match your search.</td></tr>'}
+    </table>
+  </div>`;
+}
+// Shared "bank statement alert" text builder — one line per transaction: "date, description, amount",
+// used by both the mailto: link and the clipboard-copy fallback (for when the device has no default
+// mail app wired up to mailto:).
+const FLAG_ALERT_INTRO_ONE = 'BANK STATEMENT ALERT, please check your records to confirm the following transaction: ';
+const FLAG_ALERT_INTRO_MANY = 'BANK STATEMENT ALERT, please check your records to confirm the following transactions: ';
+function flagLineForTx(t){
+  return `${t.dateStr}, ${t.description||''}, ${money(t.amount)}`;
+}
+function flagAlertText(txList){
+  const intro = txList.length===1 ? FLAG_ALERT_INTRO_ONE : FLAG_ALERT_INTRO_MANY;
+  return intro + txList.map(flagLineForTx).join('; ') + '.';
+}
+// Builds a mailto: link pre-filled with the alert text, so clicking it opens the user's default
+// email app with a ready-to-send message (no server/API needed).
+// NOTE: mailto: only works if the device/browser has a default mail app configured — if nothing
+// happens on click, use the "Copy" button instead and paste into any email/text app.
+function mailtoUrlForTx(id){
+  const t = findTxById(id);
+  if(!t) return '#';
+  const body = flagAlertText([t]);
+  return `mailto:?subject=${encodeURIComponent('Bank Statement Alert')}&body=${encodeURIComponent(body)}`;
+}
+function mailtoUrlForAllFlagged(){
+  const txList = Object.keys(flaggedTx).map(findTxById).filter(Boolean).sort((a,b)=>a.date-b.date);
+  const body = flagAlertText(txList);
+  return `mailto:?subject=${encodeURIComponent('Bank Statement Alert')}&body=${encodeURIComponent(body)}`;
+}
+// Copies text to the clipboard as a fallback for when mailto: doesn't launch anything. Uses the
+// modern Clipboard API when available, and falls back to the older execCommand('copy') approach
+// (still works when the file is opened directly as file://, where the Clipboard API is often
+// blocked as an insecure context).
+function copyTextToClipboard(text){
+  const done = ()=> alert('Copied — paste into any email, text, or message.');
+  const fail = ()=>{
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try{ document.execCommand('copy'); done(); }
+    catch(e){ alert('Could not copy automatically. Details:\n\n'+text); }
+    document.body.removeChild(ta);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(fail);
+  } else {
+    fail();
+  }
+}
+function copyFlagDetails(id){
+  const t = findTxById(id);
+  if(!t) return;
+  copyTextToClipboard(flagAlertText([t]));
+}
+function copyAllFlaggedDetails(){
+  const txList = Object.keys(flaggedTx).map(findTxById).filter(Boolean).sort((a,b)=>a.date-b.date);
+  if(txList.length===0){ alert('No flagged transactions.'); return; }
+  copyTextToClipboard(flagAlertText(txList));
+}
+function renderFlaggedTable(){
+  const card = document.getElementById('flaggedCard');
+  const wrap = document.getElementById('flaggedTableWrap');
+  if(!card || !wrap) return;
+  const ids = Object.keys(flaggedTx);
+  if(ids.length===0){ card.style.display='none'; return; }
+  card.style.display='block';
+  const bulkWrap = document.getElementById('flaggedBulkActions');
+  if(bulkWrap){
+    bulkWrap.innerHTML = `
+      <a class="secondary" style="display:inline-block;padding:9px 16px;font-size:13px;text-decoration:none;border-radius:8px;background:var(--panel2);border:1px solid var(--border);color:var(--text);font-weight:600;" href="${mailtoUrlForAllFlagged()}">✉ Email all flagged (${ids.length})</a>
+      <button class="secondary" onclick="copyAllFlaggedDetails()">📋 Copy all flagged (${ids.length})</button>`;
+  }
+  const rows = ids.map(id=>{
+    const t = findTxById(id);
+    if(!t){ return ''; } // stale flag (e.g. underlying data was cleared) — skip silently
+    return {id, t};
+  }).filter(Boolean).sort((a,b)=> b.t.date - a.t.date).map(({id,t})=>{
+    return `<tr>
+      <td>${t.dateStr}</td>
+      <td>${escapeHtml(t.description||'')}</td>
+      <td>${escapeHtml(t.category||'')}</td>
+      <td style="color:${t.amount<0?'var(--red)':'var(--green)'}">${money(t.amount)}</td>
+      <td style="font-size:11px;">${escapeHtml(t.source||'')}</td>
+      <td><input type="text" value="${escapeHtml(flaggedTx[id].note||'')}" placeholder="e.g. check for duplicate charge" style="width:180px;" onchange="setTxFlagNote(b64d('${b64e(id)}'), this.value)"></td>
+      <td style="white-space:nowrap;">
+        <a class="secondary" style="display:inline-block;padding:4px 8px;font-size:11px;text-decoration:none;border-radius:8px;background:var(--panel2);border:1px solid var(--border);color:var(--text);" href="${mailtoUrlForTx(id)}">✉ Email</a>
+        <button class="secondary" style="padding:4px 8px;font-size:11px;" onclick="copyFlagDetails(b64d('${b64e(id)}'))">📋 Copy</button>
+        <button class="secondary" style="padding:4px 8px;font-size:11px;" onclick="unflagTx(b64d('${b64e(id)}'))">Unflag</button>
+      </td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML = `<table>
+    <tr><th>Date</th><th>Description</th><th>Category</th><th>Amount</th><th>Source</th><th>Note</th><th></th></tr>
+    ${rows || '<tr><td colspan="7" class="meta">No flagged transactions.</td></tr>'}
+  </table>`;
+}
+
+// ---------- recurring / duplicate-amount rules ----------
+function ruleKeyFor(t){ return t.category+'|'+t.amount.toFixed(2); }
+function loadDupeResolutions(){ dupeResolutions = loadLS('fuelgauge_dupe_rules') || {}; }
+function saveDupeResolutions(){ saveLS('fuelgauge_dupe_rules', dupeResolutions); }
+function setDupeResolution(key, val){
+  if(val==='review') delete dupeResolutions[key];
+  else dupeResolutions[key] = val;
+  saveDupeResolutions();
+  render();
+}
+function applyDupeRules(txList){
+  const groups = {};
+  txList.forEach(t=>{
+    const k = ruleKeyFor(t);
+    (groups[k] = groups[k]||[]).push(t);
+  });
+  const toExclude = new Set();
+  Object.keys(groups).forEach(k=>{
+    const g = groups[k];
+    if(g.length<2) return;
+    if(dupeResolutions[k]==='excluded'){
+      const sorted = g.slice().sort((a,b)=>a.date-b.date);
+      sorted.slice(1).forEach(t=> toExclude.add(t));
+    }
+  });
+  return txList.filter(t=>!toExclude.has(t));
+}
+function getDupeGroups(){
+  const combined = transactions.concat(ledgerAsTx()).sort((a,b)=>a.date-b.date);
+  const groups = {};
+  combined.forEach(t=>{
+    const k = ruleKeyFor(t);
+    (groups[k] = groups[k]||[]).push(t);
+  });
+  return Object.keys(groups)
+    .filter(k=>groups[k].length>1)
+    .map(k=>({key:k, items:groups[k], resolution: dupeResolutions[k]||'review'}));
+}
+function renderDupeTable(){
+  const card = document.getElementById('dupeCard');
+  const wrap = document.getElementById('dupeTableWrap');
+  const groups = getDupeGroups().filter(g=>g.resolution==='review');
+  if(groups.length===0){ card.style.display='none'; wrap.innerHTML=''; return; }
+  card.style.display='block';
+  groups.sort((a,b)=> b.items.length - a.items.length);
+  const allCats = [...new Set(transactions.concat(ledgerAsTx()).map(t=>t.category))].sort();
+  let rows='';
+  groups.forEach((g,idx)=>{
+    const dates = g.items.map(t=>t.dateStr).join(', ');
+    const cat = g.items[0].category;
+    const amt = g.items[0].amount;
+    const vendors = [...new Set(g.items.map(t=>(t.description||'').trim()).filter(Boolean))];
+    const vendorText = vendors.length ? vendors.join(' / ') : '(no description)';
+    const keyEnc = b64e(g.key);
+    const idsEnc = b64e(JSON.stringify(g.items.map(t=>t.id)));
+    const detailId = `dupe-detail-${idx}`;
+    const groupCatOptions = allCats.map(c=>`<option value="${escapeHtml(c)}" ${c===cat?'selected':''}>${escapeHtml(c)}</option>`).join('')
+      + `<option value="__new__">+ New category…</option>`;
+    rows += `<tr>
+      <td>
+        <button class="secondary" style="padding:3px 8px;font-size:11px;" onclick="toggleDupeDetail('${detailId}', this)">▸ Details</button>
+        ${escapeHtml(vendorText)}
+      </td>
+      <td><select title="Recategorize all ${g.items.length} of these at once" onchange="handleDupeGroupRecat(b64d('${keyEnc}'), '${idsEnc}', this)">${groupCatOptions}</select></td>
+      <td>${money(amt)}</td>
+      <td>${g.items.length}</td>
+      <td style="font-size:11px;">${escapeHtml(dates)}</td>
+      <td>
+        <select onchange="setDupeResolution(b64d('${keyEnc}'), this.value)">
+          <option value="review" selected>Flag for Review</option>
+          <option value="recurring">Confirmed, Recurring</option>
+          <option value="excluded">Exclude Duplicates</option>
+        </select>
+      </td>
+    </tr>
+    <tr id="${detailId}" style="display:none;">
+      <td colspan="6" style="background:var(--panel);padding:10px 14px;">
+        <div class="meta" style="margin-bottom:6px;">Recategorize just one of these individually below (the dropdown above moves all of them at once).</div>
+        <table style="font-size:11.5px;">
+          <tr><th>Date</th><th>Source File</th><th>Description</th><th>Original Description</th><th>Status / Type</th><th>Category</th></tr>
+          ${g.items.slice().sort((a,b)=>a.date-b.date).map(t=>{
+            const itemCatOptions = allCats.map(c=>`<option value="${escapeHtml(c)}" ${c===t.category?'selected':''}>${escapeHtml(c)}</option>`).join('')
+              + `<option value="__new__">+ New category…</option>`;
+            return `
+            <tr>
+              <td>${t.dateStr}</td>
+              <td>${escapeHtml(t.source||'')}</td>
+              <td>${escapeHtml(t.description||'')}</td>
+              <td>${escapeHtml(t.originalDesc||'')}</td>
+              <td>${escapeHtml(t.status||'')}</td>
+              <td><select onchange="handleRecatSelect(b64d('${b64e(t.id)}'), this)">${itemCatOptions}</select></td>
+            </tr>`;
+          }).join('')}
+        </table>
+      </td>
+    </tr>`;
+  });
+  wrap.innerHTML = `<table>
+    <tr><th>Vendor / Description</th><th>Category</th><th>Amount</th><th>Occurrences</th><th>Dates</th><th>Resolution</th></tr>
+    ${rows}
+  </table>`;
+}
+
+function toggleDupeDetail(id, btn){
+  const row = document.getElementById(id);
+  if(!row) return;
+  const open = row.style.display !== 'none';
+  row.style.display = open ? 'none' : 'table-row';
+  if(btn) btn.textContent = open ? '▸ Details' : '▾ Details';
+}
+
+function getAllTx(){
+  const combined = transactions.concat(ledgerAsTx()).sort((a,b)=>a.date-b.date);
+  return applyDupeRules(combined);
+}
+
+// ---------- transaction detail / recategorize modal ----------
+let currentModalCategory = undefined; // undefined = not open, null = "all categories" (Total tile), array = group of categories
+let currentModalGroupLabel = undefined; // display label to use when currentModalCategory is an array
+let txModalSort = {col:'date', dir:'desc'};
+const TX_SORTERS = {
+  date: (a,b)=> a.date-b.date,
+  description: (a,b)=> (a.description||'').localeCompare(b.description||''),
+  source: (a,b)=> (a.source||'').localeCompare(b.source||''),
+  amount: (a,b)=> a.amount-b.amount,
+  category: (a,b)=> (a.category||'').localeCompare(b.category||'')
+};
+function setModalSort(col){
+  if(txModalSort.col===col){ txModalSort.dir = txModalSort.dir==='asc'?'desc':'asc'; }
+  else { txModalSort = {col, dir: col==='date' ? 'desc' : 'asc'}; }
+  renderTxModalBody();
+}
+function sortArrow(col){ return txModalSort.col===col ? (txModalSort.dir==='asc' ? ' ▲' : ' ▼') : ''; }
+
+function recategorizeTx(id, newCategory){
+  newCategory = (newCategory||'').trim() || 'Uncategorized';
+  if(String(id).startsWith('ledger-')){
+    const realId = String(id).slice('ledger-'.length);
+    const entry = ledgerEntries.find(e=> String(e.id)===realId);
+    if(entry){ entry.category = newCategory; saveLS('fuelgauge_ledger', ledgerEntries); }
+  } else {
+    const t = transactions.find(t=>t.id===id);
+    if(t){ t.category = newCategory; saveLS('fuelgauge_transactions', transactions); }
+  }
+}
+// Recategorizes every transaction in a duplicate group at once (section 6). Since the group's
+// dedupe key includes the old category, this also re-keys its resolution/note so the group
+// doesn't get treated as "new" and reset back to "needs review" after moving categories.
+function recategorizeDupeGroup(oldKey, ids, newCategory){
+  newCategory = (newCategory||'').trim();
+  if(!newCategory) return;
+  ids.forEach(id=> recategorizeTx(id, newCategory));
+  if(dupeResolutions[oldKey]!==undefined){
+    const amountPart = oldKey.split('|')[1];
+    const newKey = newCategory + '|' + amountPart;
+    dupeResolutions[newKey] = dupeResolutions[oldKey];
+    delete dupeResolutions[oldKey];
+    saveDupeResolutions();
+  }
+  render();
+}
+// Handles the group-level "Category" dropdown in section 6 — same "+ New category" inline-input
+// pattern used elsewhere, but applies the change to every transaction in the duplicate group.
+function handleDupeGroupRecat(oldKey, idsB64, sel){
+  const ids = JSON.parse(b64d(idsB64));
+  const val = sel.value;
+  if(val==='__new__'){
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Type new category, press Enter';
+    input.style.cssText = 'background:var(--panel2); border:1px solid var(--accent); color:var(--text); border-radius:8px; padding:6px 8px; font-size:13px; width:150px;';
+    let settled = false;
+    const commit = ()=>{
+      if(settled) return;
+      settled = true;
+      const nc = input.value.trim();
+      if(nc) recategorizeDupeGroup(oldKey, ids, nc);
+      else render();
+    };
+    const cancel = ()=>{ if(settled) return; settled = true; render(); };
+    input.addEventListener('keydown', e=>{
+      if(e.key==='Enter') commit();
+      else if(e.key==='Escape') cancel();
+    });
+    input.addEventListener('blur', commit);
+    sel.replaceWith(input);
+    input.focus();
+    return;
+  }
+  recategorizeDupeGroup(oldKey, ids, val);
+}
+
+function renderFuelRatePanel(category, groupLabel){
+  const cats = Object.keys(lastStats);
+  if(cats.length===0) return '';
+  const isGroup = Array.isArray(category);
+  const catStat = isGroup ? combinedCatStat(lastStats, category.filter(c=>lastStats[c]))
+                 : category ? lastStats[category]
+                 : combinedCatStat(lastStats, cats);
+  if(!catStat) return '';
+  const titleLabel = isGroup ? (groupLabel || category.join(', ')) : category;
+  const today = new Date();
+  const f = computeCPC(catStat, currentPeriod, today);
+  const periodLabel = f.periodLabel;
+  const stat = (big, lbl, color) => `<div class="income-stat"><div class="big"${color?` style="color:${color}"`:''}>${big}</div><div class="lbl">${lbl}</div></div>`;
+  const seasonalColor = f.seasonalFlag==='high' ? 'var(--red)' : f.seasonalFlag==='low' ? 'var(--green)' : 'var(--text)';
+  const seasonalText = f.seasonalFlag===null ? 'no same-period data last year to compare'
+    : f.seasonalFlag==='normal' ? 'within normal seasonal range (±15%) vs. same period last year'
+    : f.seasonalFlag==='high' ? 'running above the same period last year — worth a look'
+    : 'running below the same period last year';
+
+  const months = monthlyHistoryForCategory(catStat);
+  const histId = 'cpcHist_' + Math.random().toString(36).slice(2);
+  const histRows = months.map(m=>`<tr><td>${m.label}</td><td>${m.days}</td><td>${money(m.spent)}</td><td>${fmtCpc(m.cpc)}</td></tr>`).join('');
+
+  return `<div class="card" style="background:var(--panel2);margin-bottom:14px;">
+    <h2 style="margin-bottom:10px;">💵 CPC (Cash Per Category) — ${titleLabel ? escapeHtml(titleLabel) : 'all categories combined'}</h2>
+    <div class="income-box" style="margin-bottom:14px;">
+      ${stat(fmtCpc(f.curCPC), `current pay period CPC (${periodLabel}, day ${f.curElapsed} of ${f.curLen})`)}
+      ${stat(money(f.curProjected), `projected total this ${periodLabel.toLowerCase()}`)}
+      ${stat(money(f.prevSpent), `last ${periodLabel.toLowerCase()} total (${fmtCpc(f.prevCPC)})`)}
+      ${stat(fmtPct(f.vsLastPeriodPct)+' / '+money(f.vsLastPeriodDiff), 'projected vs. last period', f.vsLastPeriodDiff>0?'var(--red)':'var(--green)')}
+    </div>
+    <div class="income-box" style="margin-bottom:14px;">
+      ${stat(money(f.ytdSpent), `year to date (${fmtCpc(f.ytdCPC)})`)}
+      ${stat(money(f.lastYearMonthlyAvg), 'last year — monthly average')}
+      ${stat(money(f.spSpent), `same ${periodLabel.toLowerCase()} last year (${f.spStart.toLocaleDateString()} – ${addDays(f.spEnd,-1).toLocaleDateString()})`)}
+      ${stat(fmtPct(f.vsSameLastYearPct)+' / '+money(f.vsSameLastYearDiff), 'projected vs. same period last year', seasonalColor)}
+    </div>
+    <div class="meta" style="margin-bottom:10px;">CPC = dollars spent ÷ days elapsed in the period — a plain burn rate, not a ratio to a "normal." Projected total = CPC × the full period length. This period's projection looks <b style="color:${seasonalColor}">${seasonalText}</b>.</div>
+    <button class="secondary" style="padding:6px 12px;font-size:12px;" onclick="document.getElementById('${histId}').style.display = document.getElementById('${histId}').style.display==='none' ? 'block' : 'none';">Toggle full monthly history (${months.length} month${months.length===1?'':'s'} of data)</button>
+    <div id="${histId}" style="display:none;margin-top:10px;max-height:300px;overflow:auto;">
+      <table>
+        <tr><th>Month</th><th>Days</th><th>Total Spent</th><th>CPC ($/day)</th></tr>
+        ${histRows || '<tr><td colspan="4" class="meta">No monthly data yet.</td></tr>'}
+      </table>
+    </div>
+  </div>`;
+}
+
+function openTxModal(category, groupLabel){
+  currentModalCategory = category; // string category, array of categories (group), or null for "all"
+  currentModalGroupLabel = groupLabel;
+  txModalSort = {col:'date', dir:'desc'};
+  const isGroup = Array.isArray(category);
+  const title = isGroup ? (groupLabel || category.join(', ')) : category;
+  document.getElementById('txModalTitle').textContent = title ? (title + ' — transactions') : 'All categories — transactions';
+  document.getElementById('txModalOverlay').style.display = 'flex';
+  renderTxModalBody();
+}
+function closeTxModal(){
+  document.getElementById('txModalOverlay').style.display = 'none';
+  currentModalCategory = undefined;
+  currentModalGroupLabel = undefined;
+}
+function renderTxModalBody(){
+  if(currentModalCategory===undefined) return;
+  const all = transactions.concat(ledgerAsTx());
+  const {start,end} = periodBounds(currentPeriod, new Date());
+  const isGroup = Array.isArray(currentModalCategory);
+  const items = currentModalCategory===null ? all.slice()
+    : isGroup ? all.filter(t=>currentModalCategory.includes(t.category))
+    : all.filter(t=>t.category===currentModalCategory);
+  const cmp = TX_SORTERS[txModalSort.col] || TX_SORTERS.date;
+  items.sort((a,b)=> txModalSort.dir==='asc' ? cmp(a,b) : -cmp(a,b));
+  const cats = [...new Set(all.map(t=>t.category))].sort();
+  const periodLabel = (PERIODS.find(p=>p.key===currentPeriod)||{}).label || currentPeriod;
+
+  const rows = items.map(t=>{
+    const inPeriod = t.date>=start && t.date<end;
+    const flagged = !!flaggedTx[t.id];
+    const catOptions = cats.map(c=>`<option value="${escapeHtml(c)}" ${c===t.category?'selected':''}>${escapeHtml(c)}</option>`).join('')
+      + `<option value="__new__">+ New category…</option>`;
+    const rowBg = flagged ? 'rgba(255,92,92,0.14)' : (inPeriod ? 'rgba(79,124,255,0.10)' : null);
+    return `<tr ${rowBg?`style="background:${rowBg};"`:''}>
+      <td>${t.dateStr}${inPeriod?' <span class="pill">this period</span>':''}</td>
+      <td>${escapeHtml(t.description||'')}</td>
+      <td style="font-size:11px;">${escapeHtml(t.source||'')}</td>
+      <td style="color:${t.amount<0?'var(--red)':'var(--green)'}">${money(t.amount)}</td>
+      <td><select onchange="handleRecatSelect(b64d('${b64e(t.id)}'), this)">${catOptions}</select></td>
+      <td style="text-align:center;white-space:nowrap;">
+        <label style="cursor:pointer;" title="Flag for review"><input type="checkbox" ${flagged?'checked':''} onchange="toggleTxFlag(b64d('${b64e(t.id)}'))"> 🚩</label>
+        ${flagged?` <a href="${mailtoUrlForTx(t.id)}" title="Email this flagged transaction" style="text-decoration:none;">✉</a> <a href="javascript:void(0)" onclick="copyFlagDetails(b64d('${b64e(t.id)}'))" title="Copy details to clipboard" style="text-decoration:none;">📋</a>`:''}
+      </td>
+    </tr>`;
+  }).join('');
+
+  const modalScopeLabel = isGroup ? (currentModalGroupLabel || currentModalCategory.join(', ')) : currentModalCategory;
+  document.getElementById('txModalBody').innerHTML = `
+    ${renderFuelRatePanel(currentModalCategory, currentModalGroupLabel)}
+    <div class="meta" style="margin-bottom:10px;">${items.length} entr${items.length===1?'y':'ies'}${modalScopeLabel?` in "${escapeHtml(modalScopeLabel)}"`:''}. Highlighted (blue) rows are counted in the currently selected <b>${periodLabel}</b> gauge; highlighted (red) rows are flagged for review. Change a row's category to recategorize it — gauges update immediately.</div>
+    <table>
+      <tr>
+        <th style="cursor:pointer;user-select:none;" onclick="setModalSort('date')">Date${sortArrow('date')}</th>
+        <th style="cursor:pointer;user-select:none;" onclick="setModalSort('description')">Description${sortArrow('description')}</th>
+        <th style="cursor:pointer;user-select:none;" onclick="setModalSort('source')">Source${sortArrow('source')}</th>
+        <th style="cursor:pointer;user-select:none;" onclick="setModalSort('amount')">Amount${sortArrow('amount')}</th>
+        <th style="cursor:pointer;user-select:none;" onclick="setModalSort('category')">Category${sortArrow('category')}</th>
+        <th>Flag</th>
+      </tr>
+      ${rows || '<tr><td colspan="6" class="meta">No entries.</td></tr>'}
+    </table>`;
+}
+function handleRecatSelect(id, sel){
+  const val = sel.value;
+  if(val==='__new__'){
+    // Swap the dropdown for an inline text box so any typed text is saved as-is —
+    // no reliance on window.prompt(), which some browsers/embedded viewers block.
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Type new category, press Enter';
+    input.style.cssText = 'background:var(--panel2); border:1px solid var(--accent); color:var(--text); border-radius:8px; padding:6px 8px; font-size:13px; width:150px;';
+    let settled = false;
+    const commit = ()=>{
+      if(settled) return;
+      settled = true;
+      const nc = input.value.trim();
+      if(nc) recategorizeTx(id, nc);
+      renderTxModalBody();
+      render();
+    };
+    const cancel = ()=>{
+      if(settled) return;
+      settled = true;
+      renderTxModalBody();
+    };
+    input.addEventListener('keydown', e=>{
+      if(e.key==='Enter') commit();
+      else if(e.key==='Escape') cancel();
+    });
+    input.addEventListener('blur', commit);
+    sel.replaceWith(input);
+    input.focus();
+    return;
+  }
+  recategorizeTx(id, val);
+  renderTxModalBody();
+  render();
+}
+function addLedgerEntry(){
+  const date = document.getElementById('ledDate').value;
+  const desc = document.getElementById('ledDesc').value.trim();
+  const cat = document.getElementById('ledCat').value.trim() || 'Uncategorized';
+  const amount = parseFloat(document.getElementById('ledAmount').value);
+  if(!date || isNaN(amount)){ alert('Enter a date and a valid amount.'); return; }
+  ledgerEntries.push({id: Date.now()+Math.random(), date, description: desc, category: cat, amount});
+  saveLS('fuelgauge_ledger', ledgerEntries);
+  document.getElementById('ledDesc').value = '';
+  document.getElementById('ledAmount').value = '';
+  render();
+}
+function deleteLedgerEntry(id){
+  ledgerEntries = ledgerEntries.filter(e=>e.id!==id);
+  saveLS('fuelgauge_ledger', ledgerEntries);
+  render();
+}
+function renderLedgerTable(){
+  const wrap = document.getElementById('ledgerTableWrap');
+  if(!wrap) return;
+  if(ledgerEntries.length===0){ wrap.innerHTML = '<div class="meta">No manual entries yet.</div>'; return; }
+  const sorted = ledgerEntries.slice().sort((a,b)=> a.date.localeCompare(b.date));
+  let bal = 0;
+  let rows = '';
+  sorted.forEach(e=>{
+    bal += parseFloat(e.amount);
+    rows += `<tr>
+      <td>${e.date}</td>
+      <td>${escapeHtml(e.description||'')}</td>
+      <td>${escapeHtml(e.category)}</td>
+      <td style="color:${e.amount<0?'var(--red)':'var(--green)'}">${money(parseFloat(e.amount))}</td>
+      <td>${money(bal)}</td>
+      <td><button class="secondary" style="padding:4px 8px;font-size:11px;" onclick="deleteLedgerEntry(${e.id})">Delete</button></td>
+    </tr>`;
+  });
+  wrap.innerHTML = `<table>
+    <tr><th>Date</th><th>Description</th><th>Category</th><th>Amount</th><th>Running Balance</th><th></th></tr>
+    ${rows}
+  </table>`;
+}
+function updateLedgerCatList(cats){
+  const dl = document.getElementById('ledCatList');
+  if(!dl) return;
+  dl.innerHTML = cats.map(c=>`<option value="${c}">`).join('');
+}
+
+// ---------- income sources ----------
+function lastDayOfMonth(year, month){ return new Date(year, month+1, 0); }
+function dateOnly(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function nextPayDate(today){
+  const eomThis = lastDayOfMonth(today.getFullYear(), today.getMonth());
+  if(dateOnly(today) <= eomThis) return eomThis;
+  return lastDayOfMonth(today.getFullYear(), today.getMonth()+1);
+}
+function lastPayDate(today){
+  const eomThis = lastDayOfMonth(today.getFullYear(), today.getMonth());
+  if(dateOnly(today) < eomThis) return lastDayOfMonth(today.getFullYear(), today.getMonth()-1);
+  return eomThis;
+}
+// A source with no startDate is always active. A source with a startDate is only
+// active on/after that date — used to keep future income (e.g. VA / DFAS retirement
+// starting 9/1/2026) out of every income total and gauge until it actually begins.
+function isIncomeActive(src, today){
+  if(!src.startDate) return true;
+  return dateOnly(today) >= parseDate(src.startDate);
+}
+function addIncomeSource(){
+  const name = document.getElementById('srcName').value.trim();
+  const amount = parseFloat(document.getElementById('srcAmount').value);
+  const frequency = document.getElementById('srcFreq').value;
+  const startDate = document.getElementById('srcStart').value || null;
+  if(!name || isNaN(amount)){ alert('Enter a source name and a valid amount.'); return; }
+  incomeSources.push({id: Date.now()+Math.random(), name, amount, frequency, startDate});
+  saveLS('fuelgauge_incomesources', incomeSources);
+  document.getElementById('srcName').value = '';
+  document.getElementById('srcAmount').value = '';
+  document.getElementById('srcStart').value = '';
+  render();
+}
+function deleteIncomeSource(id){
+  incomeSources = incomeSources.filter(s=>s.id!==id);
+  saveLS('fuelgauge_incomesources', incomeSources);
+  render();
+}
+function renderSourcesTable(){
+  const wrap = document.getElementById('sourcesTableWrap');
+  if(!wrap) return;
+  if(incomeSources.length===0){ wrap.innerHTML = '<div class="meta">No income sources added yet.</div>'; return; }
+  const today = new Date();
+  let rows = '';
+  let totalMonthly = 0;
+  incomeSources.forEach(s=>{
+    const active = isIncomeActive(s, today);
+    if(active) totalMonthly += s.amount;
+    const next = nextPayDate(today);
+    const statusPill = active
+      ? ''
+      : ` <span class="pill" style="color:var(--yellow);border-color:var(--yellow);">not yet active — starts ${parseDate(s.startDate).toLocaleDateString()}</span>`;
+    rows += `<tr ${active?'':'style="opacity:0.55;"'}>
+      <td>${s.name}${statusPill}</td>
+      <td>${money(s.amount)}</td>
+      <td>Monthly (end of month)</td>
+      <td>${active ? next.toDateString() : '—'}</td>
+      <td><button class="secondary" style="padding:4px 8px;font-size:11px;" onclick="deleteIncomeSource(${s.id})">Delete</button></td>
+    </tr>`;
+  });
+  wrap.innerHTML = `<table>
+    <tr><th>Source</th><th>Amount</th><th>Frequency</th><th>Next Pay Date</th><th></th></tr>
+    ${rows}
+    <tr><td><b>Total monthly income (active sources only)</b></td><td colspan="4"><b>${money(totalMonthly)}</b></td></tr>
+  </table>`;
+}
+
+// ---------- period math ----------
+function startOfMonth(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
+function startOfYear(d){ return new Date(d.getFullYear(),0,1); }
+function addDays(d,n){ return new Date(d.getTime()+n*DAY); }
+function daysBetween(a,b){ return Math.round((b-a)/DAY); }
+// Number of days in a given month (handles 28/29/30/31, including leap years automatically):
+// day 0 of the following month is always the last day of the target month.
+function daysInMonth(year, month){ return new Date(year, month+1, 0).getDate(); }
+
+function periodBounds(periodKey, today){
+  today = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const monthStart = startOfMonth(today);
+  const monthEnd = new Date(today.getFullYear(), today.getMonth()+1, 1); // exclusive, = 1st of next month
+  let start, end;
+  if(periodKey==='daily'){
+    start = today; end = addDays(today,1);
+  } else if(periodKey==='weekly'){
+    // Weeks reset on the 1st of each pay period (calendar month) so a week never spans two pay periods.
+    // Day 1-7 = week 1, 8-14 = week 2, 15-21 = week 3, 22-28 = week 4, remaining days = a short final week.
+    const dayIndex = daysBetween(monthStart, today);
+    const weekIndex = Math.floor(dayIndex/7);
+    start = addDays(monthStart, weekIndex*7);
+    end = addDays(start,7);
+    if(end>monthEnd) end = monthEnd;
+  } else if(periodKey==='monthly'){
+    start = monthStart; end = monthEnd;
+  } else if(periodKey==='quarterly'){
+    const qStartMonth = Math.floor(today.getMonth()/3)*3;
+    start = new Date(today.getFullYear(), qStartMonth, 1);
+    end = new Date(today.getFullYear(), qStartMonth+3, 1);
+  } else if(periodKey==='semiannual'){
+    const hStartMonth = today.getMonth()<6 ? 0 : 6;
+    start = new Date(today.getFullYear(), hStartMonth, 1);
+    end = new Date(today.getFullYear(), hStartMonth+6, 1);
+  } else if(periodKey==='annual'){
+    start = startOfYear(today); end = new Date(start.getFullYear()+1,0,1);
+  }
+  return {start, end};
+}
+function periodRangeLabel(periodKey, today){
+  const {start,end} = periodBounds(periodKey, today);
+  const lastDay = addDays(end,-1);
+  const days = daysBetween(start,end);
+  const fmt = d => d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+  return `${fmt(start)} – ${fmt(lastDay)} (${days} day${days===1?'':'s'})`;
+}
+
+function computeCategoryStats(){
+  const allTx = getAllTx();
+  if(allTx.length===0) return {};
+  const minDate = allTx[0].date, maxDate = allTx[allTx.length-1].date;
+  const totalDays = Math.max(1, daysBetween(minDate, maxDate)+1);
+
+  const byCat = {};
+  allTx.forEach(t=>{
+    if(t.amount>=0) return; // only spending (negative amounts)
+    if(!byCat[t.category]) byCat[t.category] = {total:0, txs:[]};
+    byCat[t.category].total += Math.abs(t.amount);
+    byCat[t.category].txs.push(t);
+  });
+
+  const stats = {};
+  Object.keys(byCat).forEach(cat=>{
+    const avgDaily = byCat[cat].total / totalDays;
+    stats[cat] = {avgDaily, total:byCat[cat].total, txs:byCat[cat].txs};
+  });
+  return stats;
+}
+
+function gaugeForPeriod(catStat, periodKey, today){
+  const {start,end} = periodBounds(periodKey, today);
+  const periodLen = daysBetween(start,end);
+  const elapsed = Math.min(periodLen, Math.max(1, daysBetween(start, today)+1));
+  const normalBudget = catStat.avgDaily * periodLen;
+  const actual = catStat.txs.filter(t=> t.date>=start && t.date<end)
+                            .reduce((s,t)=>s+Math.abs(t.amount),0);
+  const pct = normalBudget>0 ? (actual/normalBudget)*100 : 0;
+  const pacePct = (elapsed/periodLen)*100;
+  return {normalBudget, actual, pct, pacePct, remaining: normalBudget-actual};
+}
+
+// ---------- CPC (Cash Per Category) burn-rate engine ----------
+// CPC is a literal spend rate, not a ratio: CPC = dollars spent in a period / days elapsed
+// in that period. Example: $150 spent on Gas across a 30-day pay period so far = $5.00/day CPC.
+// Projected period total = CPC * full period length in days, e.g. $100 in the first 10 days
+// of a 31-day period = $10.00/day CPC -> $310.00 projected for the full period.
+function sumInRange(txs, start, end){
+  return txs.filter(t=> t.date>=start && t.date<end).reduce((s,t)=>s+Math.abs(t.amount),0);
+}
+// Sums spending only through "today" (never counts elapsed days that haven't happened yet),
+// so a partially-elapsed period still produces a meaningful daily burn rate.
+function dailyRateInRange(txs, start, end, today){
+  const cutoff = addDays(dateOnly(today), 1); // exclusive — includes all of today
+  const effectiveEnd = end < cutoff ? end : cutoff;
+  const elapsedDays = Math.max(1, daysBetween(start, effectiveEnd < start ? start : effectiveEnd));
+  const spent = sumInRange(txs, start, effectiveEnd < start ? start : effectiveEnd);
+  return {spent, elapsedDays, rate: spent/elapsedDays};
+}
+function fmtCpc(v){ return money(v)+'/day'; }
+function fmtPct(v){
+  if(v===null) return '—';
+  const sign = v>=0 ? '+' : '';
+  return sign + v.toFixed(0) + '%';
+}
+// Builds the full CPC readout for one category (or the combined fleet when catStat aggregates
+// every category). catStat = {txs}. periodKey = whichever tab is currently selected
+// (daily/weekly/monthly/quarterly/semiannual/annual) — that's "the current pay period" the user
+// is comparing against.
+function computeCPC(catStat, periodKey, today){
+  const txs = catStat.txs || [];
+  today = dateOnly(today);
+
+  // Current period.
+  const cur = periodBounds(periodKey, today);
+  const curLen = daysBetween(cur.start, cur.end);
+  const curRate = dailyRateInRange(txs, cur.start, cur.end, today);
+  const curCPC = curRate.rate;
+  const curProjected = curCPC * curLen;
+
+  // Last period — same period type, immediately prior (e.g. last month for the monthly tab).
+  const prevAnchor = addDays(cur.start, -1);
+  const prev = periodBounds(periodKey, prevAnchor);
+  const prevLen = daysBetween(prev.start, prev.end);
+  const prevSpent = sumInRange(txs, prev.start, prev.end);
+  const prevCPC = prevLen>0 ? prevSpent/prevLen : 0;
+  const vsLastPeriodDiff = curProjected - prevSpent;
+  const vsLastPeriodPct = prevSpent>0 ? (vsLastPeriodDiff/prevSpent)*100 : null;
+
+  // Year to date.
+  const yearStart = startOfYear(today);
+  const ytdEnd = addDays(today,1);
+  const ytdSpent = sumInRange(txs, yearStart, ytdEnd);
+  const ytdDays = daysBetween(yearStart, ytdEnd);
+  const ytdCPC = ytdSpent/ytdDays;
+
+  // Last calendar year — total and monthly average.
+  const lastYearStart = new Date(today.getFullYear()-1, 0, 1);
+  const lastYearEnd = new Date(today.getFullYear(), 0, 1);
+  const lastYearSpent = sumInRange(txs, lastYearStart, lastYearEnd);
+  const lastYearMonthlyAvg = lastYearSpent/12;
+
+  // Same period last year (same calendar window, shifted back exactly one year) — e.g.
+  // 7/1/2025-7/31/2025 compared against the current 7/1/2026-7/31/2026 monthly pay period.
+  const spStart = new Date(cur.start.getFullYear()-1, cur.start.getMonth(), cur.start.getDate());
+  const spEnd = new Date(cur.end.getFullYear()-1, cur.end.getMonth(), cur.end.getDate());
+  const spSpent = sumInRange(txs, spStart, spEnd);
+  const vsSameLastYearDiff = curProjected - spSpent;
+  const vsSameLastYearPct = spSpent>0 ? (vsSameLastYearDiff/spSpent)*100 : null;
+  // Within +/-15% of the same period last year = seasonally normal; outside that = flagged.
+  const seasonalFlag = vsSameLastYearPct===null ? null : (Math.abs(vsSameLastYearPct) <= 15 ? 'normal' : (vsSameLastYearPct>0 ? 'high' : 'low'));
+
+  return {
+    periodLabel: (PERIODS.find(p=>p.key===periodKey)||{}).label || periodKey,
+    curStart: cur.start, curEnd: cur.end, curLen, curElapsed: curRate.elapsedDays, curSpent: curRate.spent, curCPC, curProjected,
+    prevStart: prev.start, prevEnd: prev.end, prevLen, prevSpent, prevCPC,
+    vsLastPeriodDiff, vsLastPeriodPct,
+    ytdSpent, ytdDays, ytdCPC,
+    lastYearSpent, lastYearMonthlyAvg,
+    spStart, spEnd, spSpent,
+    vsSameLastYearDiff, vsSameLastYearPct, seasonalFlag
+  };
+}
+function combinedCatStat(stats, cats){
+  const txs = [];
+  cats.forEach(c=>{ txs.push(...stats[c].txs); });
+  return {txs};
+}
+// Every calendar month present anywhere in the loaded data (not just this category's own
+// range), so every category's monthly history table lines up on the same set of months —
+// covers as many records as the uploaded CSVs provide, oldest to newest.
+function monthlyHistoryForCategory(catStat){
+  const txs = catStat.txs || [];
+  const all = getAllTx();
+  if(all.length===0) return [];
+  const minD = all[0].date, maxD = all[all.length-1].date;
+  const months = [];
+  let y = minD.getFullYear(), m = minD.getMonth();
+  const endY = maxD.getFullYear(), endM = maxD.getMonth();
+  while(y<endY || (y===endY && m<=endM)){
+    const start = new Date(y,m,1), end = new Date(y,m+1,1);
+    const days = daysInMonth(y,m);
+    const spent = sumInRange(txs, start, end);
+    months.push({year:y, month:m, label: start.toLocaleDateString(undefined,{month:'short',year:'numeric'}), days, spent, cpc: spent/days});
+    m++; if(m>11){ m=0; y++; }
+  }
+  return months.reverse(); // newest first
+}
+
+// ---------- gauge SVG ----------
+function polarToCartesian(cx,cy,r,angleDeg){
+  const a = (angleDeg-180) * Math.PI/180;
+  return {x: cx + r*Math.cos(a), y: cy + r*Math.sin(a)};
+}
+function arcPath(cx,cy,r,startAngle,endAngle){
+  const s = polarToCartesian(cx,cy,r,startAngle);
+  const e = polarToCartesian(cx,cy,r,endAngle);
+  const large = endAngle-startAngle<=180 ? 0 : 1;
+  return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`;
+}
+function buildGaugeSvg(pct, pacePct, color){
+  const cx=75, cy=75, r=60;
+  const clamped = Math.max(0, Math.min(150, pct));
+  const needleAngle = (clamped/150)*180; // 0=left(0%),180=right(150%)
+  const paceAngle = (Math.max(0,Math.min(150,pacePct))/150)*180;
+  const needle = polarToCartesian(cx,cy,r-8,needleAngle);
+  const paceTick = polarToCartesian(cx,cy,r+6,paceAngle);
+  const paceTick2 = polarToCartesian(cx,cy,r-4,paceAngle);
+  return `
+  <svg width="150" height="90" viewBox="0 0 150 85">
+    <path d="${arcPath(cx,cy,r,0,102)}" stroke="var(--green)" stroke-width="10" fill="none" stroke-linecap="round"/>
+    <path d="${arcPath(cx,cy,r,102,120)}" stroke="var(--yellow)" stroke-width="10" fill="none" stroke-linecap="round"/>
+    <path d="${arcPath(cx,cy,r,120,180)}" stroke="var(--red)" stroke-width="10" fill="none" stroke-linecap="round"/>
+    <line x1="${paceTick2.x}" y1="${paceTick2.y}" x2="${paceTick.x}" y2="${paceTick.y}" stroke="#fff" stroke-width="2" opacity="0.85"/>
+    <line x1="${cx}" y1="${cy}" x2="${needle.x}" y2="${needle.y}" stroke="${color}" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="${cx}" cy="${cy}" r="5" fill="${color}"/>
+  </svg>`;
+}
+function colorFor(pct){
+  if(pct>100) return 'var(--red)';
+  if(pct>=85) return 'var(--yellow)';
+  return 'var(--green)';
+}
+
+// ---------- column (bar) chart, used for individual category cards ----------
+function buildBarChartSvg(pct, pacePct, color){
+  const chartTop=8, chartBottom=90, chartH=chartBottom-chartTop;
+  const maxScale = Math.max(150, pct, pacePct) + 10; // headroom above tallest bar/marker
+  const valToY = v => chartBottom - (Math.max(0,Math.min(v,maxScale))/maxScale)*chartH;
+  const normalY = valToY(100); // dashed line marking "normal" (100%) budget level
+  const actualBarH = chartBottom - valToY(pct);
+  const paceY = valToY(pacePct);
+  const barX = 55, barW = 40;
+  return `
+  <svg width="150" height="110" viewBox="0 0 150 110">
+    <line x1="20" y1="${normalY}" x2="140" y2="${normalY}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3,3"/>
+    <text x="140" y="${normalY-3}" text-anchor="end" font-size="9" fill="var(--muted)">normal</text>
+    <rect x="${barX}" y="${valToY(pct)}" width="${barW}" height="${actualBarH}" rx="4" fill="${color}"/>
+    <line x1="${barX-8}" y1="${paceY}" x2="${barX+barW+8}" y2="${paceY}" stroke="#fff" stroke-width="2" opacity="0.85"/>
+    <line x1="20" y1="${chartBottom}" x2="140" y2="${chartBottom}" stroke="var(--border)" stroke-width="1"/>
+  </svg>`;
+}
+
+// ---------- UI ----------
+function buildPeriodTabs(){
+  const wrap = document.getElementById('periodTabs');
+  wrap.innerHTML = '';
+  PERIODS.forEach(p=>{
+    const el = document.createElement('div');
+    el.className = 'tab' + (p.key===currentPeriod ? ' active':'');
+    el.textContent = p.label;
+    el.onclick = ()=>{ currentPeriod = p.key; render(); };
+    wrap.appendChild(el);
+  });
+}
+
+function buildCatToggles(cats){
+  const wrap = document.getElementById('catToggles');
+  wrap.innerHTML = '<span style="align-self:center;">Include in "Total" summary:</span>';
+  cats.forEach(cat=>{
+    const id = 'chk_'+cat.replace(/\W/g,'');
+    const label = document.createElement('label');
+    label.innerHTML = `<input type="checkbox" id="${id}" ${disabledCats.has(cat)?'':'checked'}> ${cat}`;
+    label.querySelector('input').onchange = (e)=>{
+      if(e.target.checked) disabledCats.delete(cat); else disabledCats.add(cat);
+      render();
+    };
+    wrap.appendChild(label);
+  });
+}
+
+function render(){
+  buildPeriodTabs();
+  const rangeLabelEl = document.getElementById('periodRangeLabel');
+  if(rangeLabelEl) rangeLabelEl.textContent = periodRangeLabel(currentPeriod, new Date());
+  renderSourcesTable();
+  renderLedgerTable();
+  renderRulesTable();
+  renderDupeTable();
+  renderFlaggedTable();
+  renderMasterList();
+  const stats = computeCategoryStats();
+  const cats = Object.keys(stats).sort((a,b)=>stats[b].total-stats[a].total);
+  const today = new Date();
+  lastStats = stats;
+
+  updateLedgerCatList(cats);
+  populateRuleCategorySelect(cats);
+  ensureTiersForCategories(cats);
+  renderTierTable(cats);
+  renderTierSummary();
+  buildCatToggles(cats.filter(c=>!hiddenCats.has(c)));
+
+  const sections = document.getElementById('gaugeSections');
+  sections.innerHTML = '';
+
+  // Categories hidden in section 9 (e.g. a loan that's paid off) never reach the dashboard build
+  // below — their gauge card, their spot in the Total, and their row in the summary table below
+  // all disappear, without touching their transaction history, tier, or group settings.
+  const visibleCats = cats.filter(c=>!hiddenCats.has(c));
+
+  // Total tile first, in its own mini-grid
+  let totalActual=0, totalNormal=0;
+  visibleCats.forEach(cat=>{ if(!disabledCats.has(cat)){
+    const g = gaugeForPeriod(stats[cat], currentPeriod, today);
+    totalActual += g.actual; totalNormal += g.normalBudget;
+  }});
+  const totalPct = totalNormal>0 ? (totalActual/totalNormal)*100 : 0;
+  const {start,end} = periodBounds(currentPeriod, today);
+  const periodLen = daysBetween(start,end);
+  const elapsed = Math.min(periodLen, Math.max(1, daysBetween(start, today)+1));
+  const totalPace = (elapsed/periodLen)*100;
+  const includedCats = visibleCats.filter(c=>!disabledCats.has(c));
+  const totalCpc = includedCats.length ? computeCPC(combinedCatStat(stats, includedCats), currentPeriod, today) : null;
+  const totalGrid = document.createElement('div');
+  totalGrid.className = 'grid';
+  totalGrid.style.marginBottom = '18px';
+  totalGrid.appendChild(makeGaugeCard('TOTAL (selected cats)', totalPct, totalPace, totalActual, totalNormal, false, totalCpc));
+  sections.appendChild(totalGrid);
+
+  // Build the category tree: each leaf category's Parent group is a ">"-separated path (e.g.
+  // "Insurance > Property > Home"), so a category can be nested to any depth. Only root-level
+  // nodes (standalone leaf categories, and top-level groups) get their own dashboard card;
+  // everything nested inside only shows once its ancestor group is expanded. Tiers/totals stay
+  // computed per leaf category everywhere (see renderTierSummary) — the tree only changes display.
+  const catTree = buildCategoryTree(visibleCats);
+
+  const itemsByTier = {}; TIER_DEFS.forEach(t=>itemsByTier[t.key]=[]);
+  (catTree.leafCategories||[]).forEach(key=>{
+    if(!stats[key]) return;
+    const tier = categoryTiers[key] || 'unclassified';
+    itemsByTier[tier].push({kind:'leaf', key});
+  });
+  Object.values(catTree.children).forEach(node=>{
+    const info = treeNodeTierInfo(node, stats, today);
+    itemsByTier[info.tier].push({kind:'group', node, mixed:info.mixed});
+  });
+
+  TIER_DEFS.forEach(tierDef=>{
+    const items = itemsByTier[tierDef.key];
+    if(items.length===0) return;
+    const heading = document.createElement('div');
+    heading.style.cssText = 'font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:10px 0 8px;';
+    heading.textContent = tierDef.label + (tierDef.hint ? ' — ' + tierDef.hint : '');
+    sections.appendChild(heading);
+    const g = document.createElement('div');
+    g.className = 'grid';
+    g.style.marginBottom = '18px';
+    items.forEach(item=>{
+      if(item.kind==='leaf'){
+        const gg = gaugeForPeriod(stats[item.key], currentPeriod, today);
+        const cpc = computeCPC(stats[item.key], currentPeriod, today);
+        g.appendChild(makeGaugeCard(item.key, gg.pct, gg.pacePct, gg.actual, gg.normalBudget, EXCLUDE_FROM_TOTAL.has(item.key), cpc));
+      } else {
+        g.appendChild(makeTreeGroupCard(item.node, item.mixed, stats, today));
+      }
+    });
+    sections.appendChild(g);
+  });
+
+  document.getElementById('dataCard').style.display = cats.length? 'block':'none';
+  document.getElementById('noData').style.display = cats.length? 'none':'block';
+
+  renderSummaryTable(stats, visibleCats, today);
+  renderIncomeWidget(stats, cats);
+}
+
+function makeGaugeCard(cat, pct, pacePct, actual, normal, flagged, cpc){
+  const div = document.createElement('div');
+  div.className = 'gauge-card';
+  div.title = 'Click to view CPC burn-rate details, transactions, and recategorize entries';
+  const color = colorFor(pct);
+  const isTotal = cat.indexOf('TOTAL')===0;
+  const cpcLine = cpc ? `<div class="nums">💵 <b>${fmtCpc(cpc.curCPC)}</b> CPC · <span style="font-size:11px;">proj ${money(cpc.curProjected)} this period</span></div>` : '';
+  div.innerHTML = `
+    <div class="cat">${escapeHtml(cat)}</div>
+    ${flagged?'<div class="flag">⚠ transfer / not spend</div>':''}
+    ${isTotal ? buildGaugeSvg(pct, pacePct, color) : buildBarChartSvg(pct, pacePct, color)}
+    <div class="pct" style="color:${color}">${pct.toFixed(0)}%</div>
+    <div class="nums">Spent <b>${money(actual)}</b> of normal <b>${money(normal)}</b></div>
+    ${cpcLine}
+  `;
+  div.onclick = ()=> openTxModal(isTotal ? null : cat);
+  return div;
+}
+
+// A "group" card is a parent category (e.g. "Fuel") that stacks together everything grouped under it
+// (Truck Fuel, Van Fuel, Yard Equipment Fuel). It shows one combined bar by default; click "Show
+// breakdown" to reveal the individual members inline, without adding separate cards to the main grid.
+// ---------- category tree (arbitrary-depth grouping via ">"-separated Parent group paths) ----------
+// Builds a tree from every leaf category's stored path. A node's `leafCategories` are real
+// transaction categories whose path ends exactly at that node; `children` are further nested
+// group nodes keyed by name. Root itself represents "no parent" (top-level).
+function buildCategoryTree(cats){
+  const root = {name:'', fullPath:'', children:{}, leafCategories:[]};
+  cats.forEach(c=>{
+    const pathStr = (categoryParents[c]||'').trim();
+    const segments = pathStr ? pathStr.split('>').map(s=>s.trim()).filter(Boolean) : [];
+    let node = root;
+    let curPath = '';
+    segments.forEach(seg=>{
+      curPath = curPath ? curPath+' > '+seg : seg;
+      if(!node.children[seg]) node.children[seg] = {name:seg, fullPath:curPath, children:{}, leafCategories:[]};
+      node = node.children[seg];
+    });
+    node.leafCategories.push(c);
+  });
+  return root;
+}
+function collectLeaves(node){
+  let leaves = node.leafCategories.slice();
+  Object.values(node.children).forEach(child=>{ leaves = leaves.concat(collectLeaves(child)); });
+  return leaves;
+}
+// Dollar-weighted dominant tier for a whole subtree (used only to decide which dashboard section
+// — Critical Fixed/Variable/Discretionary — a group card is placed under; the actual tier totals
+// in section 5's summary are always computed per leaf category, never blurred by this).
+function treeNodeTierInfo(node, stats, today){
+  const weights = {};
+  collectLeaves(node).forEach(c=>{
+    if(!stats[c]) return;
+    const g = gaugeForPeriod(stats[c], currentPeriod, today);
+    const tier = categoryTiers[c] || 'unclassified';
+    weights[tier] = (weights[tier]||0) + g.actual;
+  });
+  const tierKeys = Object.keys(weights);
+  if(tierKeys.length===0) return {tier:'unclassified', mixed:false};
+  let best = tierKeys[0];
+  tierKeys.forEach(k=>{ if(weights[k]>weights[best]) best=k; });
+  return {tier:best, mixed: tierKeys.length>1};
+}
+function aggregateNode(node, stats, today){
+  const leaves = collectLeaves(node).filter(c=>stats[c]);
+  const data = leaves.map(c=>({cat:c, gg:gaugeForPeriod(stats[c], currentPeriod, today)}));
+  const actual = data.reduce((s,m)=>s+m.gg.actual,0);
+  const normal = data.reduce((s,m)=>s+m.gg.normalBudget,0);
+  return {leaves, data, actual, normal, pct: normal>0 ? (actual/normal)*100 : 0};
+}
+function makeTreeGroupCard(node, mixed, stats, today){
+  const div = document.createElement('div');
+  div.className = 'gauge-card';
+  div.title = 'Click to view combined CPC burn-rate details and transactions for this group';
+
+  const agg = aggregateNode(node, stats, today);
+  const {start,end} = periodBounds(currentPeriod, today);
+  const periodLen = daysBetween(start,end);
+  const elapsed = Math.min(periodLen, Math.max(1, daysBetween(start, today)+1));
+  const pace = (elapsed/periodLen)*100;
+  const color = colorFor(agg.pct);
+
+  const cpc = agg.leaves.length ? computeCPC(combinedCatStat(stats, agg.leaves), currentPeriod, today) : null;
+  const cpcLine = cpc ? `<div class="nums">💵 <b>${fmtCpc(cpc.curCPC)}</b> CPC · <span style="font-size:11px;">proj ${money(cpc.curProjected)} this period</span></div>` : '';
+
+  const expanded = groupExpanded.has(node.fullPath);
+  const pathEnc = b64e(node.fullPath);
+
+  div.innerHTML = `
+    <div class="cat">📦 ${escapeHtml(node.name)}</div>
+    ${mixed?'<div class="flag">mixed tiers within this group</div>':''}
+    ${buildBarChartSvg(agg.pct, pace, color)}
+    <div class="pct" style="color:${color}">${agg.pct.toFixed(0)}%</div>
+    <div class="nums">Spent <b>${money(agg.actual)}</b> of normal <b>${money(agg.normal)}</b> · ${agg.leaves.length} categor${agg.leaves.length===1?'y':'ies'}</div>
+    ${cpcLine}
+    <button class="secondary" style="margin-top:8px;padding:5px 10px;font-size:11px;" onclick="event.stopPropagation(); toggleGroup(b64d('${pathEnc}'))">${expanded?'▲ Hide breakdown':'▼ Show breakdown'}</button>
+    ${expanded ? renderTreeChildren(node, stats, today, 1) : ''}
+  `;
+  div.onclick = ()=> openTxModal(agg.leaves, node.name);
+  return div;
+}
+// Recursively renders a group's contents when expanded: direct leaf categories as simple rows,
+// and any nested sub-groups as their own indented, independently-expandable rows — to any depth.
+function renderTreeChildren(node, stats, today, depth){
+  const leafRows = node.leafCategories.filter(c=>stats[c]).map(c=>{
+    const gg = gaugeForPeriod(stats[c], currentPeriod, today);
+    const col = colorFor(gg.pct);
+    return `<tr style="cursor:pointer;" onclick="event.stopPropagation(); openTxModal(b64d('${b64e(c)}'))">
+      <td>${escapeHtml(c)}</td>
+      <td>${money(gg.actual)}</td>
+      <td>${money(gg.normalBudget)}</td>
+      <td style="color:${col}">${gg.pct.toFixed(0)}%</td>
+    </tr>`;
+  }).join('');
+  const leafTable = leafRows ? `<table style="font-size:11px;">
+    <tr><th>Category</th><th>Spent</th><th>Normal</th><th>%</th></tr>
+    ${leafRows}
+  </table>` : '';
+
+  const childGroupsHtml = Object.values(node.children).map(child=>{
+    const childAgg = aggregateNode(child, stats, today);
+    const childExpanded = groupExpanded.has(child.fullPath);
+    const childColor = colorFor(childAgg.pct);
+    const childPathEnc = b64e(child.fullPath);
+    return `<div style="margin-top:8px;margin-left:${(depth-1)*14}px;border-left:2px solid var(--border);padding-left:10px;">
+      <div style="cursor:pointer;font-size:12px;" onclick="event.stopPropagation(); toggleGroup(b64d('${childPathEnc}'))">
+        ${childExpanded?'▾':'▸'} 📁 <b>${escapeHtml(child.name)}</b>
+        — <span style="color:${childColor}">${money(childAgg.actual)} of ${money(childAgg.normal)} (${childAgg.pct.toFixed(0)}%)</span>
+        <span style="cursor:pointer;text-decoration:underline;font-size:11px;" onclick="event.stopPropagation(); openTxModal(JSON.parse(b64d('${b64e(JSON.stringify(childAgg.leaves))}')), b64d('${b64e(child.fullPath)}'))">view transactions</span>
+      </div>
+      ${childExpanded ? renderTreeChildren(child, stats, today, depth+1) : ''}
+    </div>`;
+  }).join('');
+
+  return `<div style="margin-top:10px;text-align:left;">${leafTable}${childGroupsHtml}</div>`;
+}
+
+function renderSummaryTable(stats, cats, today){
+  const wrap = document.getElementById('summaryTableWrap');
+  document.getElementById('summaryCard').style.display = cats.length? 'block':'none';
+  let rows = '';
+  cats.forEach(cat=>{
+    const g = gaugeForPeriod(stats[cat], currentPeriod, today);
+    rows += `<tr>
+      <td>${cat}</td>
+      <td>${money(g.actual)}</td>
+      <td>${money(g.normalBudget)}</td>
+      <td style="color:${colorFor(g.pct)}">${g.pct.toFixed(0)}%</td>
+      <td>${g.remaining>=0? money(g.remaining) : '<b style="color:var(--red)">'+money(g.remaining)+'</b>'}</td>
+    </tr>`;
+  });
+  wrap.innerHTML = `<table>
+    <tr><th>Category</th><th>Spent (period)</th><th>Normal budget</th><th>% of normal</th><th>Remaining</th></tr>
+    ${rows}
+  </table>`;
+}
+
+function renderIncomeWidget(stats, cats){
+  const wrap = document.getElementById('incomeWidget');
+  if(incomeSources.length===0){ wrap.innerHTML=''; return; }
+  const today = new Date();
+  const next = nextPayDate(today);
+  const last = lastPayDate(today);
+  const totalMonthly = incomeSources.filter(src=>isIncomeActive(src, today)).reduce((s,src)=>s+src.amount,0);
+  const daysLeft = daysBetween(dateOnly(today), next);
+
+  let html = '<div class="income-box">';
+  if(currentAccountBalance!=null){
+    html += `<div class="income-stat"><div class="big">${money(currentAccountBalance)}</div><div class="lbl">⛽ current account balance${currentAccountBalanceDate?' ('+currentAccountBalanceDate+')':''}</div></div>`;
+  }
+  html += `<div class="income-stat"><div class="big">${daysLeft>=0?daysLeft:0}</div><div class="lbl">days until next income</div></div>`;
+  html += `<div class="income-stat"><div class="big">${money(totalMonthly)}</div><div class="lbl">total monthly income (active sources)</div></div>`;
+
+  if(cats.length){
+    const daysSince = Math.max(1, daysBetween(last, today)+1);
+    let spendSince = 0, normalSince = 0;
+    cats.forEach(cat=>{
+      if(disabledCats.has(cat)) return;
+      const txSince = stats[cat].txs.filter(t=>t.date>=last).reduce((s,t)=>s+Math.abs(t.amount),0);
+      spendSince += txSince;
+      normalSince += stats[cat].avgDaily * daysSince;
+    });
+    const pct = normalSince>0 ? (spendSince/normalSince)*100 : 0;
+    const remainingBudget = totalMonthly - spendSince;
+    html += `<div class="income-stat"><div class="big" style="color:${colorFor(pct)}">${money(spendSince)}</div><div class="lbl">spent since last payday (${last.toDateString()})</div></div>`;
+    html += `<div class="income-stat"><div class="big">${money(normalSince)}</div><div class="lbl">normal pace for ${daysSince}d</div></div>`;
+    html += `<div class="income-stat"><div class="big" style="color:${colorFor(pct)}">${pct.toFixed(0)}%</div><div class="lbl">of normal pace</div></div>`;
+    html += `<div class="income-stat"><div class="big" style="color:${remainingBudget<0?'var(--red)':'var(--text)'}">${money(remainingBudget)}</div><div class="lbl">income left before next payday</div></div>`;
+  }
+  html += '</div>';
+  wrap.innerHTML = html;
+}
+
+function buildUI(){
+  render();
+}
+
+document.getElementById('loadBtn').onclick = loadData;
+document.getElementById('loadBalanceBtn').onclick = loadBalanceFile;
+document.getElementById('exportDataBtn').onclick = exportData;
+document.getElementById('importDataFile').onchange = (e)=>{ importDataFromFile(e.target.files[0]); e.target.value=''; };
+document.getElementById('addSourceBtn').onclick = addIncomeSource;
+document.getElementById('addLedgerBtn').onclick = addLedgerEntry;
+document.getElementById('addRuleBtn').onclick = addKeywordRule;
+document.getElementById('applyRulesBtn').onclick = reapplyKeywordRules;
+document.getElementById('clearBtn').onclick = ()=>{
+  localStorage.removeItem('fuelgauge_transactions');
+  localStorage.removeItem('fuelgauge_incomesources');
+  localStorage.removeItem('fuelgauge_ledger');
+  localStorage.removeItem('fuelgauge_balance');
+  transactions = [];
+  incomeSources = [];
+  ledgerEntries = [];
+  currentAccountBalance = null;
+  currentAccountBalanceDate = null;
+  currentAccountBalanceSource = null;
+  renderBalanceStatus();
+  document.getElementById('loadStatus').textContent = 'Saved data cleared.';
+  document.getElementById('dataCard').style.display='none';
+  document.getElementById('summaryCard').style.display='none';
+  document.getElementById('noData').style.display='block';
+  render();
+};
+
+// auto-load cached data on open
+// Baked-in starting data — this is the user's most recent exported backup (2026-08-08T17:54:57.000Z),
+// so opening this file always starts from their latest known-good state regardless of browser storage.
+const SEED_STATE = {"transactions":[],"ledger":[],"balance":null,"incomeSources":[],"keywordRules":[{"id":1,"keyword":"transfer","category":"Transfer"},{"id":2,"keyword":"auto","category":"Auto Payment"},{"id":3,"keyword":"mortgage","category":"Mortgage & Rent"},{"id":4,"keyword":"insurance","category":"Bills & Utilities"},{"id":1786207361490.733,"keyword":"IC Payment","amount":-78.55,"category":"Loan Boat"}],"categoryTiers":{"Credit Card Payment":"critical-variable","Mortgage & Rent":"critical-fixed","Transfer":"discretionary","Auto Payment":"critical-fixed","Financial":"unclassified","Investments":"unclassified","Check":"discretionary","Bills & Utilities":"critical-variable","Shopping":"discretionary","Student Loan":"critical-fixed","Category Pending":"unclassified","Dentist":"unclassified","Uncategorized":"unclassified","Auto Truck":"critical-fixed","Investment 529 Madison":"unclassified","Credit Card Home Depot":"critical-fixed","Insurance Dental":"unclassified","Loan Boat":"critical-fixed","Insurance, Life":"unclassified","Investment 529 Mallory":"unclassified","Mortgage":"critical-fixed","PayPal":"unclassified","Target misc":"unclassified","Target":"unclassified","Toyota Tundra":"critical-fixed","Health Insurance":"critical-variable","529 plan Madison":"critical-fixed","Verizon":"critical-variable","Walmart":"discretionary","Chase Credit Card":"critical-variable"},"categoryParents":{"Toyota Tundra":"Auto Loan","Health Insurance":"Insurance","Dentist":"HealthCare","Mortgage":"Home","Student Loan":"Loans","Target":"Shopping","529 plan Madison":"Investments","Verizon":"Cellular","Walmart":"Shopping","Chase Credit Card":"Rewards Credit Card"},"dupeRules":{},"exportedAt":null};
+window.addEventListener('load', ()=>{
+  loadDupeResolutions();
+  loadFlaggedTx();
+  loadDeletedTxIds();
+  loadKeywordRules();
+  loadCategoryTiers();
+  loadCategoryParents();
+  loadGroupExpanded();
+  loadHiddenCats();
+
+  // Everything below falls back to SEED_STATE (baked in from the user's most recent exported
+  // backup) whenever there's nothing already saved in this browser — so opening the file always
+  // starts from the last known-good state, not an empty or stale one.
+  if(keywordRules.length===0 && SEED_STATE.keywordRules.length){
+    keywordRules = SEED_STATE.keywordRules.slice();
+    saveKeywordRules();
+  }
+  if(Object.keys(categoryTiers).length===0 && Object.keys(SEED_STATE.categoryTiers).length){
+    categoryTiers = {...SEED_STATE.categoryTiers};
+    saveCategoryTiers();
+  }
+  if(Object.keys(categoryParents).length===0 && Object.keys(SEED_STATE.categoryParents).length){
+    categoryParents = {...SEED_STATE.categoryParents};
+    saveCategoryParents();
+  }
+  if(Object.keys(dupeResolutions).length===0 && Object.keys(SEED_STATE.dupeRules).length){
+    dupeResolutions = {...SEED_STATE.dupeRules};
+    saveDupeResolutions();
+  }
+
+  const cachedSources = loadLS('fuelgauge_incomesources');
+  if(cachedSources){
+    incomeSources = cachedSources;
+  } else {
+    incomeSources = SEED_STATE.incomeSources.slice();
+    saveLS('fuelgauge_incomesources', incomeSources);
+  }
+
+  const cachedLedger = loadLS('fuelgauge_ledger');
+  if(cachedLedger){ ledgerEntries = cachedLedger; }
+  else if(SEED_STATE.ledger.length){ ledgerEntries = SEED_STATE.ledger.slice(); saveLS('fuelgauge_ledger', ledgerEntries); }
+
+  const cachedBalance = loadLS('fuelgauge_balance');
+  const seedBalance = SEED_STATE.balance;
+  if(cachedBalance && (!seedBalance || cachedBalance.date >= seedBalance.date)){
+    currentAccountBalance = cachedBalance.balance;
+    currentAccountBalanceDate = cachedBalance.date;
+    currentAccountBalanceSource = cachedBalance.source;
+  } else if(seedBalance){
+    currentAccountBalance = seedBalance.balance;
+    currentAccountBalanceDate = seedBalance.date;
+    currentAccountBalanceSource = seedBalance.source;
+    saveLS('fuelgauge_balance', seedBalance);
+  }
+  renderBalanceStatus();
+
+  // Merge previously-saved (localStorage) transactions with the baked-in seed transactions so
+  // opening this file always includes the latest known data. Exact-duplicate rows (same date +
+  // same amount) are collapsed, so re-seeding never double-counts.
+  const seedNorm = SEED_STATE.transactions.map(t=>({...t, date:new Date(t.date)}));
+  const cached = loadLS('fuelgauge_transactions');
+  const cachedTx = (cached && cached.length) ? cached.map(t=>({...t, date:new Date(t.date)})) : [];
+  const {merged: mergedSeedTx, dupesCollapsed: seedDupes} = exactDedupe(cachedTx.concat(seedNorm));
+  // Re-apply any explicit deletions so a deleted seed/imported transaction doesn't silently
+  // reappear just because the seed data gets re-merged on every page open.
+  transactions = mergedSeedTx.filter(t=>!deletedTxIds.has(t.id));
+  saveLS('fuelgauge_transactions', transactions);
+  document.getElementById('loadStatus').textContent = `Loaded ${transactions.length} transactions (${cachedTx.length} previously saved + ${seedNorm.length} from the baked-in backup dated ${SEED_STATE.exportedAt ? new Date(SEED_STATE.exportedAt).toLocaleString() : 'unknown'}, ${seedDupes} duplicate${seedDupes===1?'':'s'} removed). Upload new files anytime to refresh.`;
+  buildUI();
+});
+</script>
+</body>
+</html>
