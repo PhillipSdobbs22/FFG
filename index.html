@@ -63,12 +63,42 @@
   .modal-header h3{margin:0; font-size:16px;}
   .gauge-card{cursor:pointer;}
   .gauge-card:hover{border-color:var(--accent);}
+  .gate-overlay{position:fixed; inset:0; background:rgba(6,9,16,0.92); display:flex; align-items:center; justify-content:center; z-index:300; padding:20px;}
+  .gate-box{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:26px; max-width:420px; width:100%; text-align:center;}
+  .gate-box h3{margin:0 0 10px; font-size:18px;}
+  .link-toggle{cursor:pointer; font-size:11px; color:var(--accent); text-decoration:underline;}
 </style>
 </head>
 <body>
 
+<div class="gate-overlay" id="loadGateOverlay">
+  <div class="gate-box">
+    <h3>⛽ Update This Device</h3>
+    <div class="meta" style="margin-bottom:16px;">Before viewing the dashboard, retrieve the latest files from the shared folder — one standard step, every device, every time.</div>
+    <input type="file" id="gateFileInput" accept=".csv" multiple style="display:none;">
+    <button id="gateRetrieveBtn" style="width:100%;margin-bottom:10px;">🔄 Retrieve Latest from Folder</button>
+    <div class="meta" id="gateStatus" style="margin-bottom:10px; min-height:16px;"></div>
+    <button class="secondary" id="gateSkipBtn" style="width:100%;font-size:12px;">Continue with last-loaded data (no check)</button>
+  </div>
+</div>
+
 <h1>⛽ Spending Fuel Gauge</h1>
 <div class="sub">Upload your bank exports, set your pay schedule, and see how spending in each category is pacing until your next income — including each category's CPC (Cash Per Category) burn rate, projected period total, and how that compares to last period, year-to-date, and the same period last year.</div>
+
+<div class="card" id="sourceBanner" style="display:none;">
+  <div class="row" style="justify-content:space-between; align-items:flex-start; gap:16px;">
+    <div id="sourceBannerText" class="meta" style="flex:1; min-width:220px;"></div>
+    <input type="file" id="retrieveLatestInput" accept=".csv" multiple style="display:none;">
+    <button class="secondary" id="retrieveLatestBtn" style="font-size:12px; white-space:nowrap;">🔄 Retrieve Latest</button>
+  </div>
+  <div style="margin-top:10px;">
+    <span class="link-toggle" id="toggleFileHistory">File history ▸</span>
+    &nbsp;&nbsp;
+    <span class="link-toggle" id="toggleRefreshHistory">Refresh history ▸</span>
+  </div>
+  <div id="fileHistoryWrap" style="display:none;margin-top:8px;"></div>
+  <div id="refreshHistoryWrap" style="display:none;margin-top:8px;"></div>
+</div>
 
 <div class="card">
   <h2>1. Load your transaction files</h2>
@@ -281,6 +311,89 @@ let lastStats = {}; // cache of computeCategoryStats() result, refreshed each re
 // ---------- persistence ----------
 function saveLS(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
 function loadLS(key){ try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }catch(e){ return null; } }
+
+// ---------- load metadata: source banner, file history, refresh history ----------
+// Tracks WHICH files are currently feeding this device's dashboard and WHEN the shared folder
+// was last checked for something newer — separate from the actual transaction/balance data.
+function loadMeta(){ return loadLS('fuelgauge_loadmeta') || {lastTxLoad:null, lastBalanceLoad:null, fileHistory:[], refreshHistory:[]}; }
+function saveMeta(m){ saveLS('fuelgauge_loadmeta', m); }
+function pushFileHistory(entry){
+  const m = loadMeta();
+  m.fileHistory.unshift({...entry, at: new Date().toISOString()});
+  m.fileHistory = m.fileHistory.slice(0, 40);
+  saveMeta(m);
+}
+function pushRefreshHistory(entry){
+  const m = loadMeta();
+  m.refreshHistory.unshift({...entry, at: new Date().toISOString()});
+  m.refreshHistory = m.refreshHistory.slice(0, 40);
+  saveMeta(m);
+}
+function setLastTxLoad(fileNames){
+  const m = loadMeta();
+  m.lastTxLoad = {fileNames, loadedAt: new Date().toISOString()};
+  saveMeta(m);
+}
+function setLastBalanceLoad(fileName){
+  const m = loadMeta();
+  m.lastBalanceLoad = {fileName, loadedAt: new Date().toISOString()};
+  saveMeta(m);
+}
+function relTime(iso){
+  if(!iso) return '';
+  const ms = Date.now() - new Date(iso).getTime();
+  if(ms < 3600000) return 'just now';
+  if(ms < DAY) return Math.floor(ms/3600000)+'h ago';
+  return Math.floor(ms/DAY)+'d ago';
+}
+function maxTxDate(){
+  return transactions.length ? transactions.reduce((max,t)=> (!max||t.date>max) ? t.date : max, null) : null;
+}
+function renderSourceBanner(){
+  const card = document.getElementById('sourceBanner');
+  const textEl = document.getElementById('sourceBannerText');
+  if(!card || !textEl) return;
+  const m = loadMeta();
+  const hasAny = transactions.length || currentAccountBalance!=null;
+  card.style.display = hasAny ? 'block' : 'none';
+  if(!hasAny) return;
+
+  const ageColor = age => age>10 ? 'var(--red)' : (age>6 ? 'var(--yellow)' : 'var(--green)');
+  let parts = [];
+  const mtd = maxTxDate();
+  if(mtd){
+    const age = Math.floor((Date.now()-mtd.getTime())/DAY);
+    const fileNames = m.lastTxLoad ? m.lastTxLoad.fileNames.join(', ') : 'unknown file';
+    parts.push(`📄 Transactions current through <b style="color:${ageColor(age)}">${fmtDate(mtd)}</b> (${age}d old) — last loaded from <b>${escapeHtml(fileNames)}</b>${m.lastTxLoad?` (${relTime(m.lastTxLoad.loadedAt)})`:''}`);
+  }
+  if(currentAccountBalance!=null && currentAccountBalanceDate){
+    const balDate = new Date(currentAccountBalanceDate+'T00:00:00');
+    const age = Math.floor((Date.now()-balDate.getTime())/DAY);
+    parts.push(`💰 Balance ${money(currentAccountBalance)} as of <b style="color:${ageColor(age)}">${currentAccountBalanceDate}</b> (${age}d old) — from <b>${escapeHtml(currentAccountBalanceSource||'unknown file')}</b>`);
+  }
+  const rh = m.refreshHistory[0];
+  parts.push(rh ? `🔍 Folder last checked: ${relTime(rh.at)} — ${escapeHtml(rh.summary)}` : '🔍 Folder not checked yet this session.');
+  textEl.innerHTML = parts.join('<br>');
+
+  renderFileHistory(m.fileHistory);
+  renderRefreshHistory(m.refreshHistory);
+}
+function renderFileHistory(list){
+  const wrap = document.getElementById('fileHistoryWrap');
+  if(!wrap) return;
+  if(!list.length){ wrap.innerHTML = '<div class="meta">No files loaded yet.</div>'; return; }
+  wrap.innerHTML = '<table><tr><th>File</th><th>Type</th><th>Rows</th><th>Loaded</th></tr>' +
+    list.map(f=>`<tr><td>${escapeHtml(f.name)}</td><td>${escapeHtml(f.type)}</td><td>${f.rows!=null?f.rows:'—'}</td><td>${new Date(f.at).toLocaleString()}</td></tr>`).join('') +
+    '</table>';
+}
+function renderRefreshHistory(list){
+  const wrap = document.getElementById('refreshHistoryWrap');
+  if(!wrap) return;
+  if(!list.length){ wrap.innerHTML = '<div class="meta">No refresh checks yet.</div>'; return; }
+  wrap.innerHTML = '<table><tr><th>Checked</th><th>Result</th></tr>' +
+    list.map(r=>`<tr><td>${new Date(r.at).toLocaleString()}</td><td>${escapeHtml(r.summary)}</td></tr>`).join('') +
+    '</table>';
+}
 
 // ---------- backup / restore (export & import all app data as a .json file) ----------
 // All app data lives in this browser's localStorage, which is NOT part of this HTML file and
@@ -765,6 +878,38 @@ function parseCsvFile(file){
   });
 }
 
+// Core transaction-file processing, shared by the manual "Load / Refresh Data" button and by
+// "Retrieve Latest". Merges the given files into the existing transaction store (dedupe handles
+// re-uploads/overlap safely) and reports whether this actually pushed the newest transaction date
+// forward, so callers can tell the user "found newer data" vs "already up to date".
+async function processTxFiles(files){
+  const beforeMax = maxTxDate();
+  let allRaw = [];
+  let fileSummaries = [];
+  const fileNames = [];
+  for(const file of files){
+    const rows = await parseCsvFile(file);
+    const fields = rows.length ? Object.keys(rows[0]) : [];
+    const isTx = fields.includes('Type');
+    const norm = isTx ? normalizeTx(rows, file.name) : normalizeBk(rows, file.name);
+    allRaw = allRaw.concat(norm);
+    fileSummaries.push(`${file.name}: ${norm.length} rows (${isTx?'transactions format':'bank download format'})`);
+    if(norm.length){
+      fileNames.push(file.name);
+      pushFileHistory({name:file.name, type: isTx?'transactions':'bank download', rows: norm.length});
+    }
+  }
+  const {merged, dupesCollapsed} = exactDedupe(allRaw.concat(transactions));
+  // Re-apply any explicit deletions so re-uploading the same file doesn't bring back a
+  // transaction you already deleted.
+  transactions = merged.filter(t=>!deletedTxIds.has(t.id)).sort((a,b)=>a.date-b.date);
+  saveLS('fuelgauge_transactions', transactions);
+  const afterMax = maxTxDate();
+  const isNewer = !!afterMax && (!beforeMax || afterMax > beforeMax);
+  if(fileNames.length) setLastTxLoad(fileNames);
+  return {fileSummaries, dupesCollapsed, beforeMax, afterMax, isNewer};
+}
+
 async function loadData(){
   const files = Array.from(document.getElementById('fileMulti').files || []);
   const status = document.getElementById('loadStatus');
@@ -779,21 +924,7 @@ async function loadData(){
     }
     return;
   }
-  let allRaw = [];
-  let fileSummaries = [];
-  for(const file of files){
-    const rows = await parseCsvFile(file);
-    const fields = rows.length ? Object.keys(rows[0]) : [];
-    const isTx = fields.includes('Type');
-    const norm = isTx ? normalizeTx(rows, file.name) : normalizeBk(rows, file.name);
-    allRaw = allRaw.concat(norm);
-    fileSummaries.push(`${file.name}: ${norm.length} rows (${isTx?'transactions format':'bank download format'})`);
-  }
-  const {merged, dupesCollapsed} = exactDedupe(allRaw);
-  // Re-apply any explicit deletions so re-uploading the same file doesn't bring back a
-  // transaction you already deleted.
-  transactions = merged.filter(t=>!deletedTxIds.has(t.id)).sort((a,b)=>a.date-b.date);
-  saveLS('fuelgauge_transactions', transactions);
+  const {fileSummaries, dupesCollapsed} = await processTxFiles(files);
   status.textContent = `${fileSummaries.join(' · ')} → ${transactions.length} unique transactions (removed ${dupesCollapsed} exact duplicate${dupesCollapsed===1?'':'s'} with the same date & amount).`;
   buildUI();
 }
@@ -805,6 +936,47 @@ async function loadData(){
 function findBalanceColumn(fields){
   return fields.find(f=> /balance/i.test(f)) || null;
 }
+// Core balance-file processing, shared by the manual "Load Balance" button and by "Retrieve
+// Latest". Accepts an array of files (only ones with a Date + Balance column contribute), picks
+// the single most recent row across all of them, and only overwrites the current balance if that
+// row is actually newer than what's already loaded — so it's safe to feed it the same file twice.
+async function processBalanceFile(files){
+  let best = null, bestFileName = null;
+  const skipped = [];
+  for(const file of files){
+    const rows = await parseCsvFile(file);
+    if(!rows.length) continue;
+    const fields = Object.keys(rows[0]);
+    const balCol = findBalanceColumn(fields);
+    const dateCol = fields.find(f=> /^date$/i.test(f)) || fields.find(f=> /date/i.test(f));
+    if(!balCol || !dateCol){ skipped.push(file.name); continue; }
+    let fileBest = null;
+    rows.forEach(r=>{
+      const d = parseDate(r[dateCol]);
+      const bal = parseFloat(String(r[balCol]).replace(/[$,]/g,''));
+      if(!d || isNaN(bal)) return;
+      if(!fileBest || d > fileBest.date) fileBest = {date:d, bal};
+    });
+    if(fileBest){
+      pushFileHistory({name:file.name, type:'balance', rows: rows.length});
+      if(!best || fileBest.date > best.date){ best = fileBest; bestFileName = file.name; }
+    } else {
+      skipped.push(file.name);
+    }
+  }
+  if(!best) return {found:false, skipped};
+  const prevDate = currentAccountBalanceDate ? new Date(currentAccountBalanceDate+'T00:00:00') : null;
+  const isNewer = !prevDate || best.date > prevDate;
+  if(isNewer){
+    currentAccountBalance = best.bal;
+    currentAccountBalanceDate = fmtDate(best.date);
+    currentAccountBalanceSource = bestFileName;
+    saveLS('fuelgauge_balance', {balance: currentAccountBalance, date: currentAccountBalanceDate, source: currentAccountBalanceSource});
+    setLastBalanceLoad(bestFileName);
+  }
+  return {found:true, best, bestFileName, isNewer, skipped};
+}
+
 async function loadBalanceFile(){
   const input = document.getElementById('balanceFile');
   const status = document.getElementById('balanceStatus');
@@ -813,27 +985,11 @@ async function loadBalanceFile(){
     renderBalanceStatus();
     return;
   }
-  const rows = await parseCsvFile(file);
-  if(!rows.length){ status.textContent = 'That file had no rows.'; return; }
-  const fields = Object.keys(rows[0]);
-  const balCol = findBalanceColumn(fields);
-  const dateCol = fields.find(f=> /^date$/i.test(f)) || fields.find(f=> /date/i.test(f));
-  if(!balCol || !dateCol){
-    status.textContent = `Couldn't find a Balance and Date column in ${file.name} (found columns: ${fields.join(', ')}). Export a statement/balance CSV from your bank that includes a running balance.`;
+  const res = await processBalanceFile([file]);
+  if(!res.found){
+    status.textContent = `Couldn't find a Balance and Date column in ${file.name}. Export a statement/balance CSV from your bank that includes a running balance.`;
     return;
   }
-  let best = null;
-  rows.forEach(r=>{
-    const d = parseDate(r[dateCol]);
-    const bal = parseFloat(String(r[balCol]).replace(/[$,]/g,''));
-    if(!d || isNaN(bal)) return;
-    if(!best || d > best.date) best = {date:d, bal};
-  });
-  if(!best){ status.textContent = `Found columns but no valid date/balance rows in ${file.name}.`; return; }
-  currentAccountBalance = best.bal;
-  currentAccountBalanceDate = fmtDate(best.date);
-  currentAccountBalanceSource = file.name;
-  saveLS('fuelgauge_balance', {balance: currentAccountBalance, date: currentAccountBalanceDate, source: currentAccountBalanceSource});
   renderBalanceStatus();
   render();
 }
@@ -843,6 +999,35 @@ function renderBalanceStatus(){
   status.textContent = currentAccountBalance!=null
     ? `Current account balance: ${money(currentAccountBalance)} as of ${currentAccountBalanceDate} (from ${currentAccountBalanceSource}).`
     : 'No balance file loaded yet. Upload a bank export that includes a running Balance column.';
+}
+
+// ---------- "Retrieve Latest" — one standardized action for every device ----------
+// Feeds every selected file through BOTH pipelines (transactions + balance); each pipeline's own
+// column-detection decides what applies to it, and each only overwrites its stored data if the
+// content is actually newer than what's already loaded. Returns a plain-language summary so the
+// gate screen / banner can say "found newer" or "already up to date" — and logs it either way.
+async function retrieveLatest(files){
+  if(!files || !files.length) return {summary:'No files selected.'};
+  const txRes = await processTxFiles(files);
+  const balRes = await processBalanceFile(files);
+
+  const txSummary = txRes.afterMax
+    ? (txRes.isNewer
+        ? `Transactions: found newer data, now current through ${fmtDate(txRes.afterMax)}${txRes.beforeMax?` (was ${fmtDate(txRes.beforeMax)})`:''}.`
+        : `Transactions: no newer data — still current through ${fmtDate(txRes.afterMax)}.`)
+    : `Transactions: no transaction-formatted rows in this selection.`;
+  const balSummary = balRes.found
+    ? (balRes.isNewer
+        ? `Balance: found newer balance ${money(balRes.best.bal)} as of ${fmtDate(balRes.best.date)}.`
+        : `Balance: no newer balance — still as of ${currentAccountBalanceDate}.`)
+    : `Balance: no balance-formatted file in this selection.`;
+
+  const summary = `${txSummary} ${balSummary}`;
+  pushRefreshHistory({summary});
+  buildUI();
+  renderBalanceStatus();
+  renderSourceBanner();
+  return {summary, txRes, balRes};
 }
 
 // ---------- ledger ----------
@@ -1881,6 +2066,7 @@ function render(){
 
   renderSummaryTable(stats, visibleCats, today);
   renderIncomeWidget(stats, cats);
+  renderSourceBanner();
 }
 
 function makeGaugeCard(cat, pct, pacePct, actual, normal, flagged, cpc){
@@ -2094,6 +2280,7 @@ document.getElementById('clearBtn').onclick = ()=>{
   localStorage.removeItem('fuelgauge_incomesources');
   localStorage.removeItem('fuelgauge_ledger');
   localStorage.removeItem('fuelgauge_balance');
+  localStorage.removeItem('fuelgauge_loadmeta');
   transactions = [];
   incomeSources = [];
   ledgerEntries = [];
@@ -2106,6 +2293,63 @@ document.getElementById('clearBtn').onclick = ()=>{
   document.getElementById('summaryCard').style.display='none';
   document.getElementById('noData').style.display='block';
   render();
+};
+
+// ---------- source banner: retrieve latest + history toggles ----------
+document.getElementById('retrieveLatestBtn').onclick = ()=>{ document.getElementById('retrieveLatestInput').click(); };
+document.getElementById('retrieveLatestInput').onchange = async (e)=>{
+  const files = Array.from(e.target.files || []);
+  e.target.value = '';
+  if(!files.length) return;
+  const btn = document.getElementById('retrieveLatestBtn');
+  const prevLabel = btn.textContent;
+  btn.textContent = 'Checking…'; btn.disabled = true;
+  try{
+    await retrieveLatest(files);
+  } catch(err){
+    pushRefreshHistory({summary: 'Check failed: ' + (err && err.message ? err.message : 'could not read the selected file(s).')});
+    renderSourceBanner();
+  } finally {
+    btn.textContent = prevLabel; btn.disabled = false;
+  }
+};
+document.getElementById('toggleFileHistory').onclick = ()=>{
+  const w = document.getElementById('fileHistoryWrap');
+  const vis = w.style.display!=='none';
+  w.style.display = vis? 'none':'block';
+  document.getElementById('toggleFileHistory').textContent = 'File history ' + (vis?'▸':'▾');
+};
+document.getElementById('toggleRefreshHistory').onclick = ()=>{
+  const w = document.getElementById('refreshHistoryWrap');
+  const vis = w.style.display!=='none';
+  w.style.display = vis? 'none':'block';
+  document.getElementById('toggleRefreshHistory').textContent = 'Refresh history ' + (vis?'▸':'▾');
+};
+
+// ---------- mandatory load-gate: one standardized "retrieve" action before the dashboard shows ----------
+document.getElementById('gateRetrieveBtn').onclick = ()=>{ document.getElementById('gateFileInput').click(); };
+document.getElementById('gateFileInput').onchange = async (e)=>{
+  const files = Array.from(e.target.files || []);
+  e.target.value = '';
+  const gateStatus = document.getElementById('gateStatus');
+  if(!files.length) return;
+  const btn = document.getElementById('gateRetrieveBtn');
+  btn.textContent = 'Checking…'; btn.disabled = true;
+  try{
+    const res = await retrieveLatest(files);
+    gateStatus.textContent = res.summary;
+    document.getElementById('loadGateOverlay').style.display = 'none';
+  } catch(err){
+    gateStatus.textContent = 'Could not read the selected file(s) — try again.';
+    pushRefreshHistory({summary: 'Check failed: ' + (err && err.message ? err.message : 'could not read the selected file(s).')});
+  } finally {
+    btn.textContent = '🔄 Retrieve Latest from Folder'; btn.disabled = false;
+  }
+};
+document.getElementById('gateSkipBtn').onclick = ()=>{
+  pushRefreshHistory({summary: 'Skipped — continued with last-loaded data, no folder check.'});
+  document.getElementById('loadGateOverlay').style.display = 'none';
+  renderSourceBanner();
 };
 
 // auto-load cached data on open
