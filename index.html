@@ -67,6 +67,14 @@
   .gate-box{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:26px; max-width:420px; width:100%; text-align:center;}
   .gate-box h3{margin:0 0 10px; font-size:18px;}
   .link-toggle{cursor:pointer; font-size:11px; color:var(--accent); text-decoration:underline;}
+  body.simple-view .editor-only{ display:none !important; }
+  .balance-hero{text-align:center; padding:6px 0 2px;}
+  .balance-hero .amt{font-size:44px; font-weight:800; line-height:1.1;}
+  .balance-hero .lbl{font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-top:2px;}
+  .sts-box{border-radius:12px; padding:16px 18px; text-align:center; border:1px solid var(--border);}
+  .sts-box .amt{font-size:32px; font-weight:800; line-height:1.1;}
+  .sts-box .lbl{font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-top:2px;}
+  .sts-box .detail{font-size:12px; color:var(--muted); margin-top:10px; line-height:1.5;}
 </style>
 </head>
 <body>
@@ -75,7 +83,7 @@
   <div class="gate-box">
     <h3>⛽ Update This Device</h3>
     <div class="meta" style="margin-bottom:16px;">Before viewing the dashboard, retrieve the latest files from the shared folder — one standard step, every device, every time.</div>
-    <input type="file" id="gateFileInput" accept=".csv" multiple style="display:none;">
+    <input type="file" id="gateFileInput" accept=".csv,.json" multiple style="display:none;">
     <button id="gateRetrieveBtn" style="width:100%;margin-bottom:10px;">🔄 Retrieve Latest from Folder</button>
     <div class="meta" id="gateStatus" style="margin-bottom:10px; min-height:16px;"></div>
     <button class="secondary" id="gateSkipBtn" style="width:100%;font-size:12px;">Continue with last-loaded data (no check)</button>
@@ -88,7 +96,7 @@
 <div class="card" id="sourceBanner" style="display:none;">
   <div class="row" style="justify-content:space-between; align-items:flex-start; gap:16px;">
     <div id="sourceBannerText" class="meta" style="flex:1; min-width:220px;"></div>
-    <input type="file" id="retrieveLatestInput" accept=".csv" multiple style="display:none;">
+    <input type="file" id="retrieveLatestInput" accept=".csv,.json" multiple style="display:none;">
     <button class="secondary" id="retrieveLatestBtn" style="font-size:12px; white-space:nowrap;">🔄 Retrieve Latest</button>
   </div>
   <div style="margin-top:10px;">
@@ -100,7 +108,17 @@
   <div id="refreshHistoryWrap" style="display:none;margin-top:8px;"></div>
 </div>
 
-<div class="card">
+<div class="card" id="overviewCard" style="display:none;">
+  <div id="balanceHero"></div>
+  <div id="safeToSpendHero" style="margin-top:14px;"></div>
+  <div id="incomeWidget" style="margin-top:16px;"></div>
+</div>
+
+<div class="row" style="justify-content:flex-end; margin-bottom:10px;">
+  <button class="secondary" id="editorToggleBtn" style="font-size:12px;"></button>
+</div>
+
+<div class="card editor-only" id="loadFilesCard">
   <h2>1. Load your transaction files</h2>
   <div class="row">
     <div>
@@ -131,7 +149,7 @@
   <div class="meta" style="margin-top:8px;">This browser's data — transactions, ledger entries, income sources, categories, tiers, groups, keyword rules, and flags — lives only on this device/browser. <b>Export a backup regularly</b>, especially before switching browsers/computers or if things stop saving. Import loads a backup back in (replaces current data in this browser).</div>
 </div>
 
-<div class="card">
+<div class="card editor-only" id="incomeSourcesCard">
   <h2>2. Income sources</h2>
   <div class="row">
     <div>
@@ -156,10 +174,9 @@
   </div>
   <div class="meta">A source with a future start date is listed but excluded from every income total and gauge until that date arrives.</div>
   <div id="sourcesTableWrap" style="margin-top:12px;"></div>
-  <div id="incomeWidget" style="margin-top:16px;"></div>
 </div>
 
-<div class="card">
+<div class="card editor-only" id="ledgerCard">
   <h2>3. Checkbook ledger — manual entries</h2>
   <div class="row">
     <div>
@@ -184,7 +201,7 @@
   <div id="ledgerTableWrap" style="margin-top:12px;"></div>
 </div>
 
-<div class="card">
+<div class="card editor-only" id="keywordRulesCard">
   <h2>4. Keyword auto-categorization rules</h2>
   <div class="meta" style="margin-bottom:10px;">New CSV uploads auto-assign a category to anything that arrives "Uncategorized," by scanning its description for these keywords. If you also set an amount, the transaction's amount must match it (± a penny) for the rule to apply — leave it blank to match on keyword alone. Rules are checked in order — put more specific keywords first. Click <b>"Apply Rules Now"</b> to sweep <b>every</b> transaction and ledger entry (not just Uncategorized ones) and move anything matching a rule into that rule's category — this is how you reorganize things that are already categorized.</div>
   <div class="row">
@@ -208,9 +225,15 @@
     <button class="secondary" id="applyRulesBtn">Apply Rules Now</button>
   </div>
   <div id="rulesTableWrap" style="margin-top:12px;"></div>
+  <div class="row" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px;">
+    <div>
+      <button class="secondary" id="exportRulesBtn">⬇ Export Rules to Shared Folder</button>
+      <div class="meta" style="margin-top:6px;max-width:520px;">Downloads <code>fuelgauge_rules.json</code> — save it into the same shared folder as your CSVs. Every device's "Retrieve Latest" will pick it up automatically and merge in any new keyword rules, tiers, and groups, without ever deleting anything set only on that device.</div>
+    </div>
+  </div>
 </div>
 
-<div class="card" id="masterListCard" style="display:none;">
+<div class="card editor-only" id="masterListCard" style="display:none;">
   <h2>5. Master Entry List — all loaded transactions</h2>
   <div class="meta" style="margin-bottom:10px;">Every transaction and ledger entry currently loaded into the app and feeding the dashboard above — in one place. Search, sort by any column, recategorize, flag for review, or permanently delete an entry. Deletions are remembered, so a deleted entry won't come back even if you re-upload the same file.</div>
   <div class="row" style="margin-bottom:10px;">
@@ -223,13 +246,13 @@
   <div id="masterListTableWrap"></div>
 </div>
 
-<div class="card" id="dupeCard" style="display:none;">
+<div class="card editor-only" id="dupeCard" style="display:none;">
   <h2>6. Possible duplicates — needs review</h2>
   <div class="meta" style="margin-bottom:10px;">Entries with the exact same category and amount, on different dates. Confirm once whether it's a normal recurring item or an accidental duplicate — your answer is remembered for future uploads.</div>
   <div id="dupeTableWrap"></div>
 </div>
 
-<div class="card" id="flaggedCard" style="display:none;">
+<div class="card editor-only" id="flaggedCard" style="display:none;">
   <h2>7. Flagged for review</h2>
   <div class="meta" style="margin-bottom:10px;">Transactions you've manually flagged — e.g. multiple similar charges at the same place close together — so you and your family can double-check for errors or fraud before they get lost among everything else. Flag or unflag any transaction from its category's transaction list.</div>
   <div class="row" id="flaggedBulkActions" style="margin-bottom:12px;"></div>
@@ -250,7 +273,7 @@
   </div>
 </div>
 
-<div class="card" id="tierCard" style="display:none;">
+<div class="card editor-only" id="tierCard" style="display:none;">
   <h2>9. Classify categories, spending tiers &amp; groups</h2>
   <div class="meta" style="margin-bottom:10px;">Tag each category so gauges can be grouped by how essential the spending is. <b>Critical Fixed</b> = same amount every period, non-negotiable (mortgage, auto loan, allotments). <b>Critical Variable</b> = you must pay it, but the amount depends on usage (groceries, gas, utilities). <b>Discretionary</b> = controllable spending — the area to watch closest (shopping, dining, entertainment). Check <b>Hide from dashboard</b> for a category you're done tracking (e.g. a paid-off loan) — its gauge card disappears from section 8, but its transaction history, tier, and group stay intact and it can be unhidden any time.</div>
   <div id="tierTableWrap"></div>
@@ -370,6 +393,9 @@ function renderSourceBanner(){
     const balDate = new Date(currentAccountBalanceDate+'T00:00:00');
     const age = Math.floor((Date.now()-balDate.getTime())/DAY);
     parts.push(`💰 Balance ${money(currentAccountBalance)} as of <b style="color:${ageColor(age)}">${currentAccountBalanceDate}</b> (${age}d old) — from <b>${escapeHtml(currentAccountBalanceSource||'unknown file')}</b>`);
+  }
+  if(m.lastRulesSync){
+    parts.push(`🏷 Categorization rules last synced ${relTime(m.lastRulesSync.loadedAt)} (from <b>${escapeHtml(m.lastRulesSync.fileName)}</b>)`);
   }
   const rh = m.refreshHistory[0];
   parts.push(rh ? `🔍 Folder last checked: ${relTime(rh.at)} — ${escapeHtml(rh.summary)}` : '🔍 Folder not checked yet this session.');
@@ -571,6 +597,62 @@ function reapplyKeywordRules(){
   }
   render();
   alert(changed>0 ? `Recategorized ${changed} entr${changed===1?'y':'ies'} using keyword rules.` : 'No entries matched any current rule (or everything that matches is already in that category).');
+}
+// ---------- categorization sync: rules/tiers/groups travel through the same shared folder as the
+// CSVs, using the same one-tap "Retrieve Latest" habit — so a rule or tag set on one device
+// reaches every other device, and nothing lives only in one browser's storage.
+function exportRulesBundle(){
+  const bundle = {
+    _app: 'spending-fuel-gauge-rules',
+    exportedAt: new Date().toISOString(),
+    keywordRules,
+    categoryTiers,
+    categoryParents,
+    hiddenCats: [...hiddenCats]
+  };
+  const blob = new Blob([JSON.stringify(bundle, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'fuelgauge_rules.json'; // fixed name so it naturally replaces the prior one in the shared folder
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+// Merges an incoming rules bundle non-destructively: new keyword rules are added (existing ones
+// by id are left alone), and tier/group/hidden values from the file fill in or update matching
+// categories — anything only present locally (not in the incoming file) is left untouched, so
+// retrieving an older or partial file from another device never deletes local-only work.
+async function processRulesFile(file){
+  let bundle;
+  try{
+    const text = await file.text();
+    bundle = JSON.parse(text);
+  } catch(e){
+    return {applied:false, reason:'not a valid JSON file'};
+  }
+  if(!bundle || bundle._app!=='spending-fuel-gauge-rules'){
+    return {applied:false, reason:"not a Spending Fuel Gauge rules file"};
+  }
+  let added = 0, updated = 0;
+  const existingIds = new Set(keywordRules.map(r=>r.id));
+  (bundle.keywordRules||[]).forEach(r=>{
+    if(!existingIds.has(r.id)){ keywordRules.push(r); existingIds.add(r.id); added++; }
+  });
+  Object.entries(bundle.categoryTiers||{}).forEach(([k,v])=>{
+    if(categoryTiers[k]!==v){ categoryTiers[k]=v; updated++; }
+  });
+  Object.entries(bundle.categoryParents||{}).forEach(([k,v])=>{
+    if(categoryParents[k]!==v){ categoryParents[k]=v; updated++; }
+  });
+  (bundle.hiddenCats||[]).forEach(c=>{ if(!hiddenCats.has(c)){ hiddenCats.add(c); updated++; } });
+  saveKeywordRules(); saveCategoryTiers(); saveCategoryParents(); saveHiddenCats();
+  pushFileHistory({name:file.name, type:'rules', rows: added+updated});
+  const m = loadMeta();
+  m.lastRulesSync = {fileName:file.name, loadedAt:new Date().toISOString(), exportedAt:bundle.exportedAt||null};
+  saveMeta(m);
+  return {applied:true, added, updated};
 }
 function populateDatalist(id, cats){
   const dl = document.getElementById(id);
@@ -1002,14 +1084,20 @@ function renderBalanceStatus(){
 }
 
 // ---------- "Retrieve Latest" — one standardized action for every device ----------
-// Feeds every selected file through BOTH pipelines (transactions + balance); each pipeline's own
-// column-detection decides what applies to it, and each only overwrites its stored data if the
-// content is actually newer than what's already loaded. Returns a plain-language summary so the
-// gate screen / banner can say "found newer" or "already up to date" — and logs it either way.
+// CSV files feed BOTH pipelines (transactions + balance); each pipeline's own column-detection
+// decides what applies to it, and each only overwrites its stored data if the content is actually
+// newer than what's already loaded. Any .json file selected alongside them is treated as a
+// categorization-rules bundle (see exportRulesBundle/processRulesFile) and merged in the same
+// pass — so one folder, one tap, covers CSVs and rules/tiers/groups together. Returns a
+// plain-language summary so the gate screen / banner can say "found newer" or "already up to
+// date" — and logs it either way.
 async function retrieveLatest(files){
   if(!files || !files.length) return {summary:'No files selected.'};
-  const txRes = await processTxFiles(files);
-  const balRes = await processBalanceFile(files);
+  const csvFiles = files.filter(f=>/\.csv$/i.test(f.name));
+  const jsonFiles = files.filter(f=>/\.json$/i.test(f.name));
+
+  const txRes = csvFiles.length ? await processTxFiles(csvFiles) : {afterMax:null, beforeMax:null, isNewer:false};
+  const balRes = csvFiles.length ? await processBalanceFile(csvFiles) : {found:false};
 
   const txSummary = txRes.afterMax
     ? (txRes.isNewer
@@ -1022,7 +1110,15 @@ async function retrieveLatest(files){
         : `Balance: no newer balance — still as of ${currentAccountBalanceDate}.`)
     : `Balance: no balance-formatted file in this selection.`;
 
-  const summary = `${txSummary} ${balSummary}`;
+  let rulesSummary = '';
+  for(const jf of jsonFiles){
+    const r = await processRulesFile(jf);
+    rulesSummary += r.applied
+      ? ` Rules: +${r.added} new keyword rule${r.added===1?'':'s'}, ${r.updated} tier/group update${r.updated===1?'':'s'} (from ${jf.name}).`
+      : ` ${jf.name}: ${r.reason}.`;
+  }
+
+  const summary = `${txSummary} ${balSummary}${rulesSummary}`;
   pushRefreshHistory({summary});
   buildUI();
   renderBalanceStatus();
@@ -1442,6 +1538,55 @@ function handleDupeGroupRecat(oldKey, idsB64, sel){
   recategorizeDupeGroup(oldKey, ids, val);
 }
 
+// Critical Fixed bills arrive as one lump payment on their own real-world cycle, so a $/day burn
+// rate (CPC) is close to meaningless for them — it swings between $0 and huge numbers depending
+// on whether the payment happens to have posted yet. This shows the more relevant view instead:
+// when it was last paid, whether that covers you through now, and whether the amount itself is
+// drifting over time (e.g. an escrow/rate adjustment) — using the same 25-day cycle logic as the
+// Safe to Spend calculation, so the two stay consistent with each other.
+function renderBillTrackerPanel(category, catStat){
+  const today = new Date();
+  const cycleDays = 25;
+  const txs = catStat.txs.slice().sort((a,b)=>b.date-a.date);
+  const lastTx = txs[0] || null;
+  const daysSince = lastTx ? daysBetween(lastTx.date, today) : null;
+  const recent = txs.slice(0,6);
+  const typicalAmt = recent.length ? recent.reduce((s,t)=>s+Math.abs(t.amount),0)/recent.length : 0;
+  const isPaid = daysSince!=null && daysSince < cycleDays;
+  const statusColorV = !lastTx ? 'var(--muted)' : (isPaid ? 'var(--green)' : 'var(--red)');
+  const statusText = !lastTx ? 'No payments recorded yet for this category.'
+    : isPaid ? `✓ Paid ${daysSince} day${daysSince===1?'':'s'} ago — not due again for about ${Math.max(0,cycleDays-daysSince)} more day${(cycleDays-daysSince)===1?'':'s'}.`
+    : `⚠ ${daysSince} days since the last payment — likely due now (typical cycle ~${cycleDays}+ days).`;
+
+  const older = txs.slice(6,12);
+  const olderAvg = older.length ? older.reduce((s,t)=>s+Math.abs(t.amount),0)/older.length : null;
+  const trendPct = (olderAvg && olderAvg>0) ? ((typicalAmt-olderAvg)/olderAvg)*100 : null;
+  const trendText = trendPct===null ? 'not enough history yet to compare'
+    : Math.abs(trendPct)<3 ? 'holding steady vs. earlier payments'
+    : (trendPct>0 ? `up ${trendPct.toFixed(0)}% vs. earlier payments — worth checking why` : `down ${Math.abs(trendPct).toFixed(0)}% vs. earlier payments`);
+
+  const stat = (big, lbl, color) => `<div class="income-stat"><div class="big"${color?` style="color:${color}"`:''}>${big}</div><div class="lbl">${lbl}</div></div>`;
+  const rows = txs.map(t=>`<tr><td>${t.dateStr}</td><td>${money(Math.abs(t.amount))}</td><td style="font-size:11px;">${escapeHtml(t.source||'')}</td></tr>`).join('');
+  const histId = 'billHist_' + Math.random().toString(36).slice(2);
+
+  return `<div class="card" style="background:var(--panel2);margin-bottom:14px;">
+    <h2 style="margin-bottom:10px;">🧾 Bill Tracker — ${escapeHtml(category)}</h2>
+    <div class="meta" style="margin-bottom:10px;">This is a Critical Fixed bill — it arrives as one lump payment on its own cycle, so a $/day burn rate doesn't apply here. This shows when it was last paid and whether it's covered instead.</div>
+    <div class="income-box" style="margin-bottom:10px;">
+      ${stat(lastTx?money(Math.abs(lastTx.amount)):'—', 'last payment amount')}
+      ${stat(lastTx?lastTx.dateStr:'—', 'last payment date')}
+      ${stat(money(typicalAmt), 'typical payment amount')}
+      ${stat(daysSince!=null?daysSince+'d':'—', 'days since last paid', statusColorV)}
+    </div>
+    <div class="meta" style="margin-bottom:10px; color:${statusColorV}; font-weight:600;">${statusText}</div>
+    <div class="meta" style="margin-bottom:10px;">Amount trend: ${trendText}.</div>
+    <button class="secondary" style="padding:6px 12px;font-size:12px;" onclick="document.getElementById('${histId}').style.display = document.getElementById('${histId}').style.display==='none' ? 'block' : 'none';">Toggle payment history (${txs.length} payment${txs.length===1?'':'s'})</button>
+    <div id="${histId}" style="display:none;margin-top:10px;max-height:300px;overflow:auto;">
+      <table><tr><th>Date</th><th>Amount</th><th>Source</th></tr>${rows || '<tr><td colspan="3" class="meta">No payments yet.</td></tr>'}</table>
+    </div>
+  </div>`;
+}
+
 function renderFuelRatePanel(category, groupLabel){
   const cats = Object.keys(lastStats);
   if(cats.length===0) return '';
@@ -1451,6 +1596,11 @@ function renderFuelRatePanel(category, groupLabel){
                  : combinedCatStat(lastStats, cats);
   if(!catStat) return '';
   const titleLabel = isGroup ? (groupLabel || category.join(', ')) : category;
+  // Single, non-group category tagged Critical Fixed -> Bill Tracker instead of the CPC burn-rate
+  // panel below (a group or "all categories combined" view can mix tiers, so CPC still applies there).
+  if(!isGroup && category && categoryTiers[category]==='critical-fixed'){
+    return renderBillTrackerPanel(category, catStat);
+  }
   const today = new Date();
   const f = computeCPC(catStat, currentPeriod, today);
   const periodLabel = f.periodLabel;
@@ -2227,19 +2377,107 @@ function renderSummaryTable(stats, cats, today){
   </table>`;
 }
 
+// Critical Fixed bills (mortgage, loan payments, etc.) arrive as one lump payment on a real-world
+// ~monthly cycle, not spread across the calendar month — so a calendar-reset average wrongly
+// re-flags them as "due" right after the 1st even if already paid (or prepaid early) days earlier.
+// Instead: look at when it was actually last paid, and only count it as still due once enough
+// time has genuinely passed since then (default: 25 days — a little short of a full month, so a
+// bill that lands a few days early each cycle still gets caught on time).
+function fixedBillRemaining(catStat, today, cycleDays=25){
+  const txs = catStat.txs;
+  if(!txs.length) return 0;
+  const lastPaid = txs.reduce((max,t)=> (!max||t.date>max) ? t.date : max, null);
+  const daysSince = daysBetween(lastPaid, today);
+  if(daysSince < cycleDays) return 0; // paid recently enough — already covers this cycle
+  // "Typical" amount = average of the most recent few payments, so one-off oddities (a partial
+  // payment, a late fee) don't skew what we expect the next payment to be.
+  const recent = txs.slice().sort((a,b)=>b.date-a.date).slice(0,6);
+  return recent.reduce((s,t)=>s+Math.abs(t.amount),0) / recent.length;
+}
+
+// Safe to Spend = current balance minus whatever's still owed this pay period on Critical
+// Fixed / Critical Variable categories (mortgage, loans, insurance, groceries, utilities, etc.) —
+// the categories you can't skip. This answers "can I afford this?" and "will I make it to
+// payday?" more honestly than raw balance, since it accounts for bills that haven't hit yet.
+// Critical Fixed uses the rolling last-paid-date check above; Critical Variable (things that
+// don't arrive as one lump sum, like groceries/gas) still uses the calendar-period pace model.
+function computeSafeToSpend(stats, cats, today){
+  if(currentAccountBalance==null) return null;
+  let remainingCritical = 0, remainingDiscretionary = 0;
+  const critical = [];
+  cats.forEach(cat=>{
+    if(hiddenCats.has(cat) || !stats[cat]) return;
+    const tier = categoryTiers[cat] || 'unclassified';
+    let remaining = 0;
+    if(tier==='critical-fixed'){
+      remaining = fixedBillRemaining(stats[cat], today);
+    } else if(tier==='critical-variable'){
+      const g = gaugeForPeriod(stats[cat], 'monthly', today); // 'monthly' = the pay-period bounds
+      remaining = Math.max(0, g.remaining);
+    } else if(tier==='discretionary'){
+      const g = gaugeForPeriod(stats[cat], 'monthly', today);
+      remainingDiscretionary += Math.max(0, g.remaining);
+      return;
+    } else {
+      return; // unclassified categories don't factor into Safe to Spend either way
+    }
+    remainingCritical += remaining;
+    if(remaining > 0.5) critical.push({cat, remaining});
+  });
+  critical.sort((a,b)=>b.remaining-a.remaining);
+  const safeToSpend = currentAccountBalance - remainingCritical;
+  let status = 'green';
+  if(safeToSpend < 0) status = 'red';
+  else if(safeToSpend < remainingDiscretionary) status = 'yellow';
+  return {safeToSpend, remainingCritical, remainingDiscretionary, critical, status};
+}
+function statusColor(status){ return status==='red'?'var(--red)':(status==='yellow'?'var(--yellow)':'var(--green)'); }
+
+function renderBalanceHero(){
+  const el = document.getElementById('balanceHero');
+  if(!el) return;
+  if(currentAccountBalance==null){ el.innerHTML=''; return; }
+  el.innerHTML = `<div class="balance-hero">
+    <div class="amt">${money(currentAccountBalance)}</div>
+    <div class="lbl">⛽ Current Account Balance${currentAccountBalanceDate?' — as of '+currentAccountBalanceDate:''}</div>
+  </div>`;
+}
+
+function renderSafeToSpendHero(stats, cats, today){
+  const el = document.getElementById('safeToSpendHero');
+  if(!el) return;
+  const res = computeSafeToSpend(stats, cats, today);
+  if(!res){ el.innerHTML=''; return; }
+  const {safeToSpend, remainingCritical, critical, status} = res;
+  const col = statusColor(status);
+  const statusMsg = status==='red'
+    ? "⚠ This is less than what's still owed on your must-pay bills — you're projected short before payday."
+    : (status==='yellow' ? '⚠ Tight — covers your must-pay bills, but little left for anything else.' : '✓ Covers your must-pay bills with room to spare.');
+  const stillComing = critical.length
+    ? critical.slice(0,4).map(c=>`${escapeHtml(c.cat)} ${money(c.remaining)}`).join(' · ') + (critical.length>4?' · …':'')
+    : 'Nothing critical still expected this period.';
+  el.innerHTML = `<div class="sts-box" style="border-color:${col};">
+    <div class="amt" style="color:${col};">${money(safeToSpend)}</div>
+    <div class="lbl">Safe to Spend (after ${money(remainingCritical)} in bills still due this period)</div>
+    <div class="detail">${statusMsg}<br>Still coming: ${stillComing}</div>
+  </div>`;
+}
+
 function renderIncomeWidget(stats, cats){
   const wrap = document.getElementById('incomeWidget');
-  if(incomeSources.length===0){ wrap.innerHTML=''; return; }
+  const overviewCard = document.getElementById('overviewCard');
   const today = new Date();
+  renderBalanceHero();
+  renderSafeToSpendHero(stats, cats, today);
+  if(currentAccountBalance==null && incomeSources.length===0){ wrap.innerHTML=''; if(overviewCard) overviewCard.style.display='none'; return; }
+  if(overviewCard) overviewCard.style.display='block';
+  if(incomeSources.length===0){ wrap.innerHTML=''; return; }
   const next = nextPayDate(today);
   const last = lastPayDate(today);
   const totalMonthly = incomeSources.filter(src=>isIncomeActive(src, today)).reduce((s,src)=>s+src.amount,0);
   const daysLeft = daysBetween(dateOnly(today), next);
 
   let html = '<div class="income-box">';
-  if(currentAccountBalance!=null){
-    html += `<div class="income-stat"><div class="big">${money(currentAccountBalance)}</div><div class="lbl">⛽ current account balance${currentAccountBalanceDate?' ('+currentAccountBalanceDate+')':''}</div></div>`;
-  }
   html += `<div class="income-stat"><div class="big">${daysLeft>=0?daysLeft:0}</div><div class="lbl">days until next income</div></div>`;
   html += `<div class="income-stat"><div class="big">${money(totalMonthly)}</div><div class="lbl">total monthly income (active sources)</div></div>`;
 
@@ -2275,6 +2513,7 @@ document.getElementById('addSourceBtn').onclick = addIncomeSource;
 document.getElementById('addLedgerBtn').onclick = addLedgerEntry;
 document.getElementById('addRuleBtn').onclick = addKeywordRule;
 document.getElementById('applyRulesBtn').onclick = reapplyKeywordRules;
+document.getElementById('exportRulesBtn').onclick = exportRulesBundle;
 document.getElementById('clearBtn').onclick = ()=>{
   localStorage.removeItem('fuelgauge_transactions');
   localStorage.removeItem('fuelgauge_incomesources');
@@ -2296,6 +2535,22 @@ document.getElementById('clearBtn').onclick = ()=>{
 };
 
 // ---------- source banner: retrieve latest + history toggles ----------
+// ---------- view mode: Simple (clean, everyday) vs Full Editor (all menus/tables) ----------
+// Persisted per-device (localStorage), so each phone/computer can keep its own preference.
+let editorOpen = loadLS('fuelgauge_editoropen');
+if(editorOpen===null) editorOpen = false; // default to Simple View
+function applyViewMode(){
+  document.body.classList.toggle('simple-view', !editorOpen);
+  const btn = document.getElementById('editorToggleBtn');
+  if(btn) btn.textContent = editorOpen ? '✕ Hide Editor Tools (Simple View)' : '⚙ Show Editor Tools';
+}
+document.getElementById('editorToggleBtn').onclick = ()=>{
+  editorOpen = !editorOpen;
+  saveLS('fuelgauge_editoropen', editorOpen);
+  applyViewMode();
+};
+applyViewMode();
+
 document.getElementById('retrieveLatestBtn').onclick = ()=>{ document.getElementById('retrieveLatestInput').click(); };
 document.getElementById('retrieveLatestInput').onchange = async (e)=>{
   const files = Array.from(e.target.files || []);
